@@ -37,8 +37,28 @@ class Mission {
     this.isActive = false,
   });
 }
+class MissionRoutine {
+  List<String> days;
+  List<String> frequency;
+  TimeOfDay time;
+  TimeOfDay endTime;
+  List<String> routeName;
+  bool runAllRoutes;
+  bool isActive;
+
+  MissionRoutine({
+    required this.days,
+    required this.frequency,
+    required this.time,
+    required this.endTime,
+    required this.routeName,
+    this.runAllRoutes = false,
+    this.isActive = false,
+  });
+}
 List<Map<String, dynamic>> globalRouteList = [];
-List<Mission> missions = [];
+List<Mission> missionsSingle = [];
+List<MissionRoutine> missionsRoutine = [];
 int howManyDrone = 0;
 int selectedDroneIndex = 0;
 String fromWhereToSelectionPage = '';
@@ -316,7 +336,8 @@ class _SingleStreamPageState extends State<SingleStreamPage> {
             margin: EdgeInsets.all(8.0),
             child: ListTile(
               leading: Icon(Icons.alt_route),
-              title: Text('Route Design'),
+              title: Text('Create New Route'),
+              subtitle: Text('Latest route created: $_routeName'),
               trailing: Icon(Icons.chevron_right),
               onTap: () {
                 // Handle tap action for Route
@@ -329,8 +350,25 @@ class _SingleStreamPageState extends State<SingleStreamPage> {
               },
             ),
           ),
-          Text('Selected Route: $_routeName'),
-          // Schedule Mission Section
+          // Start Mission Card
+          Card(
+            margin: EdgeInsets.all(8.0),
+            child: ListTile(
+              leading: Icon(Icons.flight),
+              title: Text('Start Mission'),
+              subtitle: Text('Start a flight mission from your saved route.'),
+              trailing: Icon(Icons.chevron_right),
+              onTap: () {
+                // Handle tap action for Route
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => SavedRoutesPage(),
+                  ),
+                );
+              },
+            ),
+          ),
           Card(
             margin: EdgeInsets.all(8.0),
             child: ListTile(
@@ -359,18 +397,6 @@ class _SingleStreamPageState extends State<SingleStreamPage> {
               trailing: Icon(Icons.chevron_right),
               onTap: () {
                 // Handle tap action for Anomaly Records
-              },
-            ),
-          ),
-          // Messages Section (optional based on screenshot)
-          Card(
-            margin: EdgeInsets.all(8.0),
-            child: ListTile(
-              leading: Icon(Icons.message),
-              title: Text('Messages'),
-              trailing: Icon(Icons.chevron_right),
-              onTap: () {
-                // Handle tap action
               },
             ),
           ),
@@ -644,10 +670,79 @@ class ScheduleMissionPage extends StatefulWidget {
   _ScheduleMissionPageState createState() => _ScheduleMissionPageState();
 }
 
-class _ScheduleMissionPageState extends State<ScheduleMissionPage> {
+class _ScheduleMissionPageState extends State<ScheduleMissionPage> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
 
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(_handleTabSelection);
+  }
+  void _handleTabSelection() {
+    if (_tabController.indexIsChanging) {
+      // setState to rebuild the AppBar with the new action icon
+      setState(() {});
+    }
+  }
+  @override
+  void dispose() {
+    _tabController.removeListener(_handleTabSelection);
+    _tabController.dispose();
+    super.dispose();
+  }
 
-  void _addNewMission() async {
+  void _addSingleFlight() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => EditSingleMissionPage(
+          singleFlightMissions: Mission(
+            days: [],
+            time: TimeOfDay.now(),
+            routeName: [],
+            runAllRoutes: false,
+            isActive: false,
+          ),
+          isNewMission: true, // This flag is true since we're adding a new mission
+        ),
+      ),
+    ).then((newMission) {
+      if (newMission != null) {
+        setState(() {
+          // Assuming you have a list for single flight missions
+          missionsSingle.add(newMission);
+        });
+      }
+    });
+  }
+
+  void _addRoutineFlight() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => EditRoutineMissionPage(
+          routineFlightMissions: MissionRoutine(
+            days: [],
+            frequency: [],
+            time: TimeOfDay.now(),
+            endTime: TimeOfDay.now(),
+            routeName: [],
+            runAllRoutes: false,
+            isActive: false,
+          ),
+          isNewMission: true, // This flag is true since we're adding a new mission
+        ),
+      ),
+    ).then((newMission) {
+      if (newMission != null) {
+        setState(() {
+          // Assuming you have a list for routine flight missions
+          missionsRoutine.add(newMission);
+        });
+      }
+    });
+  }
+
+  /*void _addNewMission() async {
     // Open EditMissionPage to create a new Mission
     final Mission? addedMission = await Navigator.push<Mission>(
       context,
@@ -672,7 +767,7 @@ class _ScheduleMissionPageState extends State<ScheduleMissionPage> {
       });
     }
   }
-
+*/
   /*void _editMission(int index) async {
     final updatedMission = await Navigator.of(context).push<Mission>(
       MaterialPageRoute(
@@ -692,76 +787,140 @@ class _ScheduleMissionPageState extends State<ScheduleMissionPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text('Schedule Missions'),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.add),
-            onPressed: _addNewMission, // Call _addNewMission when the add icon is pressed
-          ),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: [
+            Tab(text: 'Single Flight'),
+            Tab(text: 'Routine Flight'),
+          ],
+        ),
+        actions: <Widget>[
+          if (_tabController.index == 0)
+            IconButton(
+              icon: Icon(Icons.add),
+              onPressed: _addSingleFlight,
+            ),
+          if (_tabController.index == 1)
+            IconButton(
+              icon: Icon(Icons.flight),
+              onPressed: _addRoutineFlight,
+            ),
         ],
       ),
-      body: ListView.builder(
-        itemCount: missions.length,
-        itemBuilder: (context, index) {
-          final mission = missions[index];
-          return ListTile(
-            title: Text('${mission.days.join(', ')} ${mission.time.format(context)}'),
-            subtitle: Text(mission.routeName.join(', ')),
-            trailing: Switch(
-              value: mission.isActive,
-              onChanged: (bool value) {
-                setState(() {
-                  mission.isActive = value;
-                });
-              },
-            ),
-            onTap: () async {
-              // Edit an existing mission
-              final Mission? updatedMission = await Navigator.push<Mission>(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => EditMissionPage(mission: mission, isNewMission: false),
-                ),
-              );
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          // First tab content
+          buildSingleFlightTab(),
 
-              if (updatedMission != null) {
-                setState(() {
-                  missions[index] = updatedMission;
-                });
-              }
-            },
-          );
-        },
+          // Second tab content
+          buildRoutineFlightTab(),
+        ],
       ),
     );
   }
+
+  Widget buildSingleFlightTab() {
+    // Return the Single Flight tab view
+    return ListView.builder(
+      itemCount: missionsSingle.length,
+      itemBuilder: (context, index) {
+        final mission = missionsSingle[index];
+        return ListTile(
+          title: Text('${mission.days.join(', ')} ${mission.time.format(context)}'),
+          subtitle: Text(mission.routeName.join(', ')),
+          trailing: Switch(
+            value: mission.isActive,
+            onChanged: (bool value) {
+              setState(() {
+                mission.isActive = value;
+              });
+            },
+          ),
+          onTap: () async {
+// Edit an existing mission
+            final Mission? updatedMission = await Navigator.push<Mission>(
+              context,
+              MaterialPageRoute(
+                builder: (context) => EditSingleMissionPage(singleFlightMissions: mission, isNewMission: false),
+              ),
+            );
+
+            if (updatedMission != null) {
+              setState(() {
+                missionsSingle[index] = updatedMission;
+              });
+            }
+          },
+        );
+      },
+    );
+  }
+
+  Widget buildRoutineFlightTab() {
+    // Return the Routine Flight tab view
+    return ListView.builder(
+      itemCount: missionsRoutine.length,
+      itemBuilder: (context, index) {
+        final mission = missionsRoutine[index];
+        return ListTile(
+          title: Text('${mission.time.format(context)} ~ ${mission.endTime.format(context)}'),
+          subtitle: Text('${mission.days.join(', ')}, ${mission.frequency.join(', ')}, ${mission.routeName.join(', ')}'),
+          trailing: Switch(
+            value: mission.isActive,
+            onChanged: (bool value) {
+              setState(() {
+                mission.isActive = value;
+              });
+            },
+          ),
+          onTap: () async {
+// Edit an existing mission
+            final MissionRoutine? updatedMission = await Navigator.push<MissionRoutine>(
+              context,
+              MaterialPageRoute(
+                builder: (context) => EditRoutineMissionPage(routineFlightMissions: mission, isNewMission: false),
+              ),
+            );
+
+            if (updatedMission != null) {
+              setState(() {
+                missionsRoutine[index] = updatedMission;
+              });
+            }
+          },
+        );
+      },
+    );
+  }
 }
-class EditMissionPage extends StatefulWidget {
-  final Mission mission;
+class EditSingleMissionPage extends StatefulWidget {
+  final Mission singleFlightMissions;
   final bool isNewMission;
 
-  EditMissionPage({required this.mission, required this.isNewMission});
+  EditSingleMissionPage({required this.singleFlightMissions, required this.isNewMission});
 
   @override
-  _EditMissionPageState createState() => _EditMissionPageState();
+  _EditSingleMissionPageState createState() => _EditSingleMissionPageState();
 }
 
 
-class _EditMissionPageState extends State<EditMissionPage> {
+class _EditSingleMissionPageState extends State<EditSingleMissionPage> {
   late List<String> _days;
   late TimeOfDay _time;
   late List<String> _routeName;
   late bool _runAllRoutes;
   late bool _isActive;
-  final List<String> _allDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  final List<String> _allDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
   @override
   void initState() {
     super.initState();
-    _days = widget.mission.days;
-    _time = widget.mission.time;
-    _routeName = widget.mission.routeName;
-    _runAllRoutes = widget.mission.runAllRoutes;
-    _isActive = widget.mission.isActive;
+    _days = widget.singleFlightMissions.days;
+    _time = widget.singleFlightMissions.time;
+    _routeName = widget.singleFlightMissions.routeName;
+    _runAllRoutes = widget.singleFlightMissions.runAllRoutes;
+    _isActive = widget.singleFlightMissions.isActive;
   }
   // Function to show a dialog to select the time
   void _selectTime() async {
@@ -807,13 +966,13 @@ class _EditMissionPageState extends State<EditMissionPage> {
                   shrinkWrap: true,
                   children: _allDays.map((day) {
                     return CheckboxListTile(
-                      title: Text(day),
-                      value: localSelectedDays.contains(day),
+                      title: Text('Every $day'),
+                      value: localSelectedDays.contains(day.substring(0,3)),
                       onChanged: (bool? value) {
                         if (value == true) {
-                          localSelectedDays.add(day);
+                          localSelectedDays.add(day.substring(0,3));
                         } else {
-                          localSelectedDays.remove(day);
+                          localSelectedDays.remove(day.substring(0,3));
                         }
                         // Update the local state within the dialog
                         setState(() {});
@@ -929,6 +1088,287 @@ class _EditMissionPageState extends State<EditMissionPage> {
     }).toList();
   }
 }
+class EditRoutineMissionPage extends StatefulWidget {
+  final MissionRoutine routineFlightMissions;
+  final bool isNewMission;
+
+  EditRoutineMissionPage({required this.routineFlightMissions, required this.isNewMission});
+
+  @override
+  _EditRoutineMissionPageState createState() => _EditRoutineMissionPageState();
+}
+
+
+class _EditRoutineMissionPageState extends State<EditRoutineMissionPage> {
+  late List<String> _days;
+  late List<String> _frequency;
+  late TimeOfDay _time;
+  late TimeOfDay _endTime;
+  late List<String> _routeName;
+  late bool _runAllRoutes;
+  late bool _isActive;
+  final List<String> _allDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  final List<String> _allFrequency = ['5 min', '10 min', '15 min', '30 min', '60 min'];
+
+  @override
+  void initState() {
+    super.initState();
+    _days = widget.routineFlightMissions.days;
+    _frequency = widget.routineFlightMissions.frequency;
+    _time = widget.routineFlightMissions.time;
+    _endTime = widget.routineFlightMissions.endTime;
+    _routeName = widget.routineFlightMissions.routeName;
+    _runAllRoutes = widget.routineFlightMissions.runAllRoutes;
+    _isActive = widget.routineFlightMissions.isActive;
+  }
+  // Function to show a dialog to select the time
+  void _selectTime() async {
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: _time,
+    );
+    if (picked != null && picked != _time) {
+      setState(() {
+        _time = picked;
+      });
+    }
+  }
+  void _selectEndTime() async {
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: _endTime,
+    );
+    if (picked != null && picked != _endTime) {
+      setState(() {
+        _endTime = picked;
+      });
+    }
+  }
+  void _saveMission() {
+    // Create a new Mission object with the current state
+    final MissionRoutine updatedMission = MissionRoutine(
+      days: _days,
+      frequency: _frequency,
+      time: _time,
+      endTime: _endTime,
+      routeName: _routeName,
+      runAllRoutes: _runAllRoutes,
+      isActive: _isActive,
+    );
+
+    // Return the updated mission to the previous page
+    Navigator.of(context).pop(updatedMission);
+  }
+  // Function to show a dialog to select days
+  void _selectDays() async {
+    // Use a local copy of _days for the dialog's state
+    final List<String> localSelectedDays = List<String>.from(_days);
+
+    final List<String>? newSelectedDays = await showDialog<List<String>>(
+      context: context,
+      builder: (BuildContext context) {
+        // Use StatefulBuilder to manage the local state for checkboxes within the dialog
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: Text('Repeat'),
+              content: Container(
+                width: double.maxFinite,
+                child: ListView(
+                  shrinkWrap: true,
+                  children: _allDays.map((day) {
+                    return CheckboxListTile(
+                      title: Text('Every $day'),
+                      value: localSelectedDays.contains(day.substring(0,3)),
+                      onChanged: (bool? value) {
+                        if (value == true) {
+                          localSelectedDays.add(day.substring(0,3));
+                        } else {
+                          localSelectedDays.remove(day.substring(0,3));
+                        }
+                        // Update the local state within the dialog
+                        setState(() {});
+                      },
+                    );
+                  }).toList(),
+                ),
+              ),
+              actions: <Widget>[
+                TextButton(
+                  child: Text('Cancel'),
+                  onPressed: () {
+                    Navigator.of(context).pop(); // Dismiss the dialog without saving changes
+                  },
+                ),
+                TextButton(
+                  child: Text('Confirm'),
+                  onPressed: () {
+                    Navigator.of(context).pop(localSelectedDays); // Return the selected days
+                  },
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (newSelectedDays != null) {
+      setState(() {
+        _days = newSelectedDays; // Update the main state with the new selections
+      });
+    }
+  }
+
+  void _selectFrequency() async {
+    // Use a local copy of _days for the dialog's state
+    final List<String> localSelectedFrequency = List<String>.from(_frequency);
+
+    final List<String>? newSelectedFrequency = await showDialog<List<String>>(
+      context: context,
+      builder: (BuildContext context) {
+        // Use StatefulBuilder to manage the local state for checkboxes within the dialog
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: Text('Frequency'),
+              content: Container(
+                width: double.maxFinite,
+                child: ListView(
+                  shrinkWrap: true,
+                  children: _allFrequency.map((Frequency) {
+                    return CheckboxListTile(
+                      title: Text('Every $Frequency'),
+                      value: localSelectedFrequency.contains(Frequency),
+                      onChanged: (bool? value) {
+                        if (value == true) {
+                          localSelectedFrequency.add(Frequency);
+                        } else {
+                          localSelectedFrequency.remove(Frequency);
+                        }
+                        // Update the local state within the dialog
+                        setState(() {});
+                      },
+                    );
+                  }).toList(),
+                ),
+              ),
+              actions: <Widget>[
+                TextButton(
+                  child: Text('Cancel'),
+                  onPressed: () {
+                    Navigator.of(context).pop(); // Dismiss the dialog without saving changes
+                  },
+                ),
+                TextButton(
+                  child: Text('Confirm'),
+                  onPressed: () {
+                    Navigator.of(context).pop(localSelectedFrequency); // Return the selected days
+                  },
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (newSelectedFrequency != null) {
+      setState(() {
+        _frequency = newSelectedFrequency; // Update the main state with the new selections
+      });
+    }
+  }
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Schedule'),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.close),
+            onPressed: () {
+              // Close the edit page
+              Navigator.of(context).pop();
+            },
+          ),
+        ],
+      ),
+      body: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ListTile(
+              title: Text('Start Time'),
+              trailing: Text('${_time.format(context)}'),
+              onTap: _selectTime,
+            ),
+            ListTile(
+              title: Text('End Time'),
+              trailing: Text('${_endTime.format(context)}'),
+              onTap: _selectEndTime,
+            ),
+            ListTile(
+              title: Text('Repeat'),
+              trailing: Text(_days.join(', ')),
+              onTap: _selectDays,
+            ),
+            ListTile(
+              title: Text('Frequency'),
+              trailing: Text(_frequency.join(', ')),
+              onTap: _selectFrequency,
+            ),
+            SwitchListTile(
+              title: Text('Run All Routes'),
+              value: _runAllRoutes,
+              onChanged: (bool value) {
+                setState(() {
+                  _runAllRoutes = value;
+                });
+              },
+            ),
+            Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Text('My Routes', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            ),
+            ..._buildRouteList(),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16.0),
+              child: ElevatedButton(
+                onPressed: () {
+                  // Save the edited mission details
+                  _saveMission();
+                  //Navigator.of(context).pop();
+                },
+                child: Text('Save Schedule'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _buildRouteList() {
+    // Assuming globalRouteList is available with the list of routes
+    return globalRouteList.map((route) {
+      bool isSelected = _routeName.contains(route['name']);
+      return CheckboxListTile(
+        title: Text(route['name']),
+        value: isSelected,
+        onChanged: _runAllRoutes ? null : (bool? value) {
+          setState(() {
+            if (value == true) {
+              _routeName.add(route['name']);
+            } else {
+              _routeName.remove(route['name']);
+            }
+          });
+        },
+      );
+    }).toList();
+  }
+}
 class SelectDaysPage extends StatefulWidget {
   final List<String> selectedDays;
 
@@ -977,15 +1417,382 @@ class _SelectDaysPageState extends State<SelectDaysPage> {
       body: ListView(
         children: _allDays.map((day) {
           return CheckboxListTile(
-            title: Text(day),
-            value: _selectedDays.contains(day),
-            onChanged: (_) => _toggleDay(day),
+            title: Text('Every $day'),
+            value: _selectedDays.contains(day.substring(0,3)),
+            onChanged: (_) => _toggleDay(day.substring(0,3)),
           );
         }).toList(),
       ),
     );
   }
 }
+
+class SavedRoutesPage extends StatefulWidget {
+  @override
+  _SavedRoutesPageState createState() => _SavedRoutesPageState();
+}
+
+class _SavedRoutesPageState extends State<SavedRoutesPage> {
+  // This should be populated with your saved routes
+  bool _isEditMode = false;
+
+  int _getRouteShapeInt(String routeNumber) {
+    switch (routeNumber) {
+      case 'Circular':
+        return 1;
+      case 'Half Circular':
+        return 2;
+      case 'Triangle':
+        return 3;
+      case 'Square':
+        return 4;
+      case 'Diamond':
+        return 5;
+      default:
+        return 1;
+    }
+  }
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Start Mission'),
+        actions: [
+          IconButton(
+            icon: Icon(_isEditMode ? Icons.done : Icons.edit),
+            onPressed: () {
+              setState(() {
+                _isEditMode = !_isEditMode;
+              });
+            },
+          ),
+        ],
+      ),
+      body: ListView.builder(
+        itemCount: globalRouteList.length,
+        itemBuilder: (context, index) {
+          final route = globalRouteList[index];
+          return Card(
+            child: Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Column(
+                children: [
+                  ListTile(
+                    title: Text(route['name']),
+                    trailing: _isEditMode
+                        ? IconButton(
+                      icon: Icon(Icons.delete),
+                      onPressed: () {
+                        // Confirm deletion with the user before removing the route
+                        showDialog(
+                          context: context,
+                          builder: (BuildContext context) {
+                            return AlertDialog(
+                              title: Text('Delete Route'),
+                              content: Text('Are you sure you want to delete this route?'),
+                              actions: <Widget>[
+                                TextButton(
+                                  child: Text('Cancel'),
+                                  onPressed: () => Navigator.of(context).pop(),
+                                ),
+                                TextButton(
+                                  child: Text('Delete'),
+                                  onPressed: () {
+                                    // Delete the route and update the state
+                                    setState(() {
+                                      globalRouteList.removeAt(index);
+                                    });
+                                    Navigator.of(context).pop();
+                                  },
+                                ),
+                              ],
+                            );
+                          },
+                        );
+                      },
+                    )
+                        : Icon(Icons.chevron_right),
+                    onTap: () {
+                      // Handle tap action for Route
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => FlyingPage(routeName: route['name'],selectShape: _getRouteShapeInt(route['shape']), batteryLevel: 100, altitude: route['altitude'], diameter: route['diameter'],),
+                        ),
+                      );
+                    },
+                  ),
+                  SizedBox(height: 3.0), // Spacing between name and row
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      // Painted route area
+                      Expanded(
+                        flex: 3,
+                        child: AspectRatio(
+                          aspectRatio: 1,
+                          child: Container(
+                            margin: EdgeInsets.all(16.0),
+                            decoration: BoxDecoration(
+                              color: Colors.lightBlueAccent.withOpacity(0.3),
+                              borderRadius: BorderRadius.circular(16.0),
+                            ),
+                            child: CustomPaint(
+                              painter: RouteDesignPainter(
+                                selectedRoute: _getRouteShapeInt(route['shape']),
+                                diameter: route['diameter'],
+                                altitude: route['altitude'],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // Spacer can be used to give some space between items, if needed
+                      // Spacer(flex: 1),
+                      // Text description area for altitude and diameter
+                      Expanded(
+                        flex: 2, // Adjust flex factor to control width proportion
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text('Flying Altitude: ${route['altitude'].toString()}m'),
+                            Text('Diameter: ${route['diameter'].toString()}m'),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+
+
+    );
+  }
+}
+class FlyingPage extends StatefulWidget {
+  final String routeName;
+  final int selectShape;
+  final double batteryLevel;
+  final double altitude;
+  final double diameter;
+
+  // Constructor to accept values for the route name and battery level
+  FlyingPage({
+    required this.routeName,
+    required this.selectShape,
+    required this.batteryLevel,
+    required this.altitude,
+    required this.diameter,
+  });
+  @override
+  _FlyingPageState createState() => _FlyingPageState();
+}
+
+class _FlyingPageState extends State<FlyingPage> {
+  bool isFlightStarted = false;
+
+  void _onStartPressed() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Confirm Take-off'),
+        content: Text('Are you sure you want to start the flight?'),
+        actions: <Widget>[
+          TextButton(
+            child: Text('Cancel'),
+            onPressed: () {
+              Navigator.of(context).pop(); // Dismiss the dialog but do not start the flight
+            },
+          ),
+          TextButton(
+            child: Text('Confirm'),
+            onPressed: () {
+              setState(() {
+                isFlightStarted = true; // Update the state to reflect that the flight has started
+              });
+              Navigator.of(context).pop(); // Dismiss the dialog
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _onCancelPressed() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Confirm Cancellation'),
+        content: Text('Are you sure you want to cancel the flight?'),
+        actions: <Widget>[
+          TextButton(
+            child: Text('Keep Flying'),
+            onPressed: () {
+              Navigator.of(context).pop(); // Dismiss the dialog but keep the flight running
+            },
+          ),
+          TextButton(
+            child: Text('Cancel Flight'),
+            onPressed: () {
+              setState(() {
+                isFlightStarted = false; // Update the state to reflect that the flight is canceled
+              });
+              Navigator.of(context).pop(); // Dismiss the dialog
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  /*int _getRouteShapeInt(String routeNumber) {
+    switch (routeNumber) {
+      case 'Circular':
+        return 1;
+      case 'Half Circular':
+        return 2;
+      case 'Triangle':
+        return 3;
+      case 'Square':
+        return 4;
+      case 'Diamond':
+        return 5;
+      default:
+        return 1;
+    }
+  }*/
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.routeName), // Route name displayed on the AppBar
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            flex: 5,
+            child: Column(
+              children: [
+                // Placeholder for video 1
+                Expanded(
+                  child: Container(
+                    height: 200, // Specify your desired height
+                    decoration: BoxDecoration(
+                      color: Colors.grey,
+                      border: Border.all(color: Colors.grey),
+                      borderRadius: BorderRadius.circular(8.0),
+                    ),
+                  ),
+                ),
+                // Placeholder for video 2
+                SizedBox(height: 8),
+                Expanded(
+                  child: Container(
+                    height: 200, // Specify your desired height
+                    decoration: BoxDecoration(
+                      color: Colors.grey,
+                      border: Border.all(color: Colors.grey),
+                      borderRadius: BorderRadius.circular(8.0),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Battery level
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    children: [
+                      Text('Battery Level: ${widget.batteryLevel.toStringAsFixed(0)}%'),
+                      // Add other drone status indicators here
+                    ],
+                  ),
+                ),
+                // Other drone status indicators can be added here
+              ],
+            ),
+          ),
+          // CustomPaint area
+          Expanded(
+            flex: 4,
+            child: Row(
+            mainAxisAlignment: MainAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // Painted route area
+              Expanded(
+                flex: 3,
+                child: AspectRatio(
+                  aspectRatio: 1,
+                  child: Container(
+                    margin: EdgeInsets.all(8.0),
+                    decoration: BoxDecoration(
+                      color: Colors.lightBlueAccent.withOpacity(0.3),
+                      borderRadius: BorderRadius.circular(16.0),
+                    ),
+                    child: CustomPaint(
+                      painter: RouteDesignPainter(
+                        selectedRoute: widget.selectShape,
+                        diameter: widget.diameter,
+                        altitude: widget.altitude,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+              // Spacer can be used to give some space between items, if needed
+              // Spacer(flex: 1),
+              // Text description area for altitude and diameter
+              Expanded(
+                flex: 2, // Adjust flex factor to control width proportion
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text('Flying Altitude: ${widget.altitude.toString()}m'),
+                    Text('Diameter: ${widget.diameter.toString()}m'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          ),
+          // Start button
+          Expanded(
+            flex: 1,
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+            child:ElevatedButton(
+              onPressed: isFlightStarted ? _onCancelPressed : _onStartPressed,
+              child: Text(isFlightStarted ? 'Cancel' : 'Start'),
+              style: ElevatedButton.styleFrom(
+                primary: isFlightStarted ? Colors.red : Colors.green,
+                minimumSize: Size(200, 10),// Change color based on state
+              ),
+            ),
+          ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+
+
+
 
 // Add other page classes or widgets here if needed
 class DroneRegistrationPage extends StatefulWidget {
@@ -1173,3 +1980,4 @@ class ActivityCenterPage extends StatelessWidget {
     );
   }
 }
+
