@@ -1630,7 +1630,7 @@ class _FlyingPageState extends State<FlyingPage> {
       context: context,
       builder: (context) => AlertDialog(
         title: Text('Confirm Cancellation'),
-        content: Text('Are you sure you want to cancel the flight?'),
+        content: Text('Are you sure you want to cancel the flight?\nThe drone will return to its charging station'),
         actions: <Widget>[
           TextButton(
             child: Text('Keep Flying'),
