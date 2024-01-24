@@ -1776,10 +1776,16 @@ class _FlyingPageState extends State<FlyingPage> {
               padding: const EdgeInsets.all(16.0),
             child:ElevatedButton(
               onPressed: isFlightStarted ? _onCancelPressed : _onStartPressed,
-              child: Text(isFlightStarted ? 'Cancel' : 'Start'),
+              child: Text(isFlightStarted ? 'Cancel' : 'Start',
+                style: TextStyle(
+                  fontSize: 24, // Set your desired font size here
+                  //fontWeight: FontWeight.bold, // If you want your font to be bold
+                  // other text styling as needed
+                ),
+              ),
               style: ElevatedButton.styleFrom(
                 primary: isFlightStarted ? Colors.red : Colors.green,
-                minimumSize: Size(200, 10),// Change color based on state
+                minimumSize: Size(300, 70),// Change color based on state
               ),
             ),
           ),
