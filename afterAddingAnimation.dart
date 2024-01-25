@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:intl/intl.dart';
 import 'dart:math';
+import 'dart:async';
 import 'dart:ui' as ui;
 import 'dart:typed_data';
 import 'package:flutter/services.dart' show rootBundle;
@@ -68,11 +69,15 @@ String fromWhereToSelectionPage = '';
 List<Drone> droneList = [];
 
 Future<ui.Image> loadImage(String assetPath) async {
-  final ByteData data = await rootBundle.load(assetPath);
-  final ui.Codec codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
-  final ui.FrameInfo fi = await codec.getNextFrame();
-  return fi.image;
+  ByteData data = await rootBundle.load(assetPath);
+  Uint8List bytes = data.buffer.asUint8List();
+  final Completer<ui.Image> completer = Completer();
+  ui.decodeImageFromList(bytes, (ui.Image img) {
+    completer.complete(img);
+  });
+  return completer.future;
 }
+
 
 void main() => runApp(MyApp());
 
@@ -429,6 +434,7 @@ class _RouteDesignPageState extends State<RouteDesignPage> with SingleTickerProv
   double _altitude = 0; // Default altitude
   bool _testFlightStarted = false;
   late final Future<ui.Image> landmarkImageFuture;
+  late final Future<ui.Image> chargingStationImageFuture;
   late AnimationController _animationController;
   late Animation<double> _animation;
   void _saveRoute(String routeName) {
@@ -538,7 +544,8 @@ class _RouteDesignPageState extends State<RouteDesignPage> with SingleTickerProv
   @override
   void initState() {
     super.initState();
-    landmarkImageFuture = loadImage('/Users/evan/dobermann4/assets/images/drone1.png');
+    landmarkImageFuture = loadImage('assets/images/drone1.png');
+    chargingStationImageFuture = loadImage('assets/images/charging_station.png');
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 5), // Adjust duration to control the speed
@@ -548,22 +555,18 @@ class _RouteDesignPageState extends State<RouteDesignPage> with SingleTickerProv
       ..addListener(() {
         setState(() {}); // Causes the widget to rebuild on animation tick
       });*/
-    _animationController.addListener(() {
+    /*_animationController.addListener(() {
       setState(() {});
-    });
+    });*/
   }
-  @override
-  void dispose() {
-    _animationController.dispose();
-    super.dispose();
-  }
-  void startAnimation() {
+
+  /*void startAnimation() {
     _animationController.forward();
   }
 
   void stopAnimation() {
     _animationController.stop();
-  }
+  }*/
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -609,30 +612,39 @@ class _RouteDesignPageState extends State<RouteDesignPage> with SingleTickerProv
                   color: Colors.lightBlueAccent.withOpacity(0.3),
                   borderRadius: BorderRadius.circular(16.0),
                 ),
-                child: FutureBuilder<ui.Image>(
-                  future: landmarkImageFuture,
-                  builder: (BuildContext context, AsyncSnapshot<ui.Image> snapshot) {
-                    if (snapshot.connectionState == ConnectionState.done &&
-                    snapshot.hasData) {
-                      //startAnimation();
-                      return CustomPaint(
-                        painter: RouteDesignPainter(
-                          selectedRoute: _selectedRoute,
-                          diameter: _diameter,
-                          altitude: _altitude,
-                          landmarkImage: snapshot.data!,
-                          progress: _animationController.value,
-                        ),
+                child: FutureBuilder<List<ui.Image>>(
+                  future: Future.wait([landmarkImageFuture, chargingStationImageFuture]),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const CircularProgressIndicator(); // Loading indicator while waiting for images
+                    }
+                    if (snapshot.hasError) {
+                      return Text("Error loading images: ${snapshot.error}");
+                    }
+                    if (snapshot.hasData) {
+                      // Images are loaded, now passing them to the CustomPainter
+                      return AnimatedBuilder(
+                        animation: _animationController,
+                        builder: (context, child) {
+                          return CustomPaint(
+                            painter: RouteDesignPainter(
+                              selectedRoute: _selectedRoute,
+                              diameter: _diameter,
+                              altitude: _altitude,
+                              landmarkImage: snapshot.data![0],
+                              chargingStationImage: snapshot.data![1],
+                              progress: _animationController.value,
+                            ),
+                          );
+                        },
                       );
-
-                    }else if (snapshot.hasError) {
-                      return Text('Error: ${snapshot.error}');
                     } else {
-                      return const CircularProgressIndicator();
+                      // This should not happen if images are loaded correctly
+                      return Text("Unknown error");
                     }
                   },
+                ),
               ),
-            ),
             ),
             Wrap(
               spacing: 8.0,
@@ -669,6 +681,11 @@ class _RouteDesignPageState extends State<RouteDesignPage> with SingleTickerProv
       ),
     );
   }
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
 }
 
 class RouteDesignPainter extends CustomPainter {
@@ -676,13 +693,27 @@ class RouteDesignPainter extends CustomPainter {
   final double diameter;
   final double altitude;
   final ui.Image landmarkImage; // Assuming you have a ui.Image for the landmark
+  final ui.Image chargingStationImage;
   final double progress; // A value between 0.0 and 1.0 representing the progress along the path
 
-  RouteDesignPainter({required this.selectedRoute, required this.diameter, required this.altitude, required this.landmarkImage,
+  RouteDesignPainter({required this.selectedRoute, required this.diameter, required this.altitude, required this.landmarkImage,required this.chargingStationImage,
     required this.progress,});
 
 
 
+
+  Offset _calculateImagePosition(Size size, Offset center, double radius) {
+    // This method should calculate the exact position where you want to draw the image.
+    // For simplicity, here we're using the center of the canvas which might need adjustment.
+    return center;
+  }
+
+  void _drawChargingStationImage(Canvas canvas, Offset position) {
+    final srcRect = Rect.fromLTWH(0, 0, chargingStationImage.width.toDouble(), chargingStationImage.height.toDouble());
+    final dstRect = Rect.fromCenter(center: position, width: 50.0, height: 50.0);  // Adjust size as needed
+
+    canvas.drawImageRect(chargingStationImage, srcRect, dstRect, Paint());
+  }
   @override
   void paint(Canvas canvas, Size size) {
     var paint = Paint()
@@ -693,11 +724,13 @@ class RouteDesignPainter extends CustomPainter {
     var center = Offset(size.width / 2, size.height / 2);
     var radius = (size.width / 2) * (diameter / 10); // Calculate radius based on diameter
     Path path;
+    Offset imagePosition = _calculateImagePosition(size, center, radius);
 
     switch (selectedRoute) {
       case 1:
         path = Path()..addOval(Rect.fromCircle(center: center, radius: radius));
         canvas.drawPath(path, paint);
+        _drawChargingStationImage(canvas, imagePosition);
         break;
       case 2:
         path = Path()
@@ -707,6 +740,7 @@ class RouteDesignPainter extends CustomPainter {
             radius: Radius.circular(radius),
           );
         canvas.drawPath(path, paint);
+        _drawChargingStationImage(canvas, imagePosition);
         break;
       case 3:
         path = Path()
@@ -715,11 +749,13 @@ class RouteDesignPainter extends CustomPainter {
           ..lineTo(center.dx - radius, center.dy + radius)
           ..close();
         canvas.drawPath(path, paint);
+        _drawChargingStationImage(canvas, imagePosition);
         break;
       case 4:
         path = Path()
           ..addRect(Rect.fromCenter(center: center, width: 2 * radius, height: 2 * radius));
         canvas.drawPath(path, paint);
+        _drawChargingStationImage(canvas, imagePosition);
         break;
       case 5:
         path = Path()
@@ -729,10 +765,12 @@ class RouteDesignPainter extends CustomPainter {
           ..lineTo(center.dx - radius, center.dy)
           ..close();
         canvas.drawPath(path, paint);
+        _drawChargingStationImage(canvas, imagePosition);
         break;
       default:
         throw 'Route $selectedRoute not recognized';
     }
+
 
     // Drawing the landmark along the path
     if (path != null) {
@@ -745,8 +783,8 @@ class RouteDesignPainter extends CustomPainter {
 
         // Define the destination rectangle on the canvas
         // Adjust the width and height as needed
-        final dstWidth = 50.0;
-        final dstHeight = 50.0;
+        const dstWidth = 50.0;
+        const dstHeight = 50.0;
         final dst = Rect.fromCenter(
           center: tangent.position,
           width: dstWidth,
@@ -1536,6 +1574,7 @@ class _SavedRoutesPageState extends State<SavedRoutesPage> {
   // This should be populated with your saved routes
   bool _isEditMode = false;
   late final Future<ui.Image> landmarkImageFuture;
+  late final Future<ui.Image> chargingStationImageFuture;
   int _getRouteShapeInt(String routeNumber) {
     switch (routeNumber) {
       case 'Circular':
@@ -1555,7 +1594,8 @@ class _SavedRoutesPageState extends State<SavedRoutesPage> {
   @override
   void initState() {
     super.initState();
-    landmarkImageFuture = loadImage('/Users/evan/dobermann4/assets/images/drone1.png');
+    landmarkImageFuture = loadImage('assets/images/drone1.png');
+    chargingStationImageFuture = loadImage('assets/images/charging_station.png');
   }
   @override
   Widget build(BuildContext context) {
@@ -1643,24 +1683,29 @@ class _SavedRoutesPageState extends State<SavedRoutesPage> {
                               color: Colors.lightBlueAccent.withOpacity(0.3),
                               borderRadius: BorderRadius.circular(16.0),
                             ),
-                            child: FutureBuilder<ui.Image>(
-                              future: landmarkImageFuture,
-                              builder: (BuildContext context, AsyncSnapshot<ui.Image> snapshot) {
+                            child: FutureBuilder<List<ui.Image>>(
+                              future: Future.wait([landmarkImageFuture, chargingStationImageFuture]),
+                              builder: (BuildContext context, AsyncSnapshot<List<ui.Image>> snapshot) {
                                 if (snapshot.connectionState == ConnectionState.done &&
                                     snapshot.hasData) {
+                                  final ui.Image landmarkImage = snapshot.data![0];
+                                  final ui.Image chargingStationImage = snapshot.data![1];
                                   return CustomPaint(
                                     painter: RouteDesignPainter(
                                       selectedRoute: _getRouteShapeInt(route['shape']),
                                       diameter: route['diameter'],
                                       altitude: route['altitude'],
-                                      landmarkImage: snapshot.data!,
-                                      progress: 0.5,
+                                      landmarkImage: landmarkImage,
+                                      chargingStationImage: chargingStationImage,
+                                      //progress: _animationController.value,
+                                      progress: 1,
                                     ),
                                   );
+
                                 }else if (snapshot.hasError) {
-                                  return Text('Error loading image');
+                                  return Text('Error: ${snapshot.error}');
                                 } else {
-                                  return CircularProgressIndicator();
+                                  return const CircularProgressIndicator();
                                 }
                               },
                             ),
@@ -1717,7 +1762,7 @@ class FlyingPage extends StatefulWidget {
 class _FlyingPageState extends State<FlyingPage> {
   bool isFlightStarted = false;
   late final Future<ui.Image> landmarkImageFuture;
-
+  late final Future<ui.Image> chargingStationImageFuture;
   void _onStartPressed() {
     showDialog(
       context: context,
@@ -1791,7 +1836,8 @@ class _FlyingPageState extends State<FlyingPage> {
   @override
   void initState() {
     super.initState();
-    landmarkImageFuture = loadImage('/Users/evan/dobermann4/assets/images/drone1.png');
+    landmarkImageFuture = loadImage('assets/images/drone1.png');
+    chargingStationImageFuture = loadImage('assets/images/charging_station.png');
   }
   @override
   Widget build(BuildContext context) {
@@ -1852,82 +1898,87 @@ class _FlyingPageState extends State<FlyingPage> {
           Expanded(
             flex: 4,
             child: Row(
-            mainAxisAlignment: MainAxisAlignment.start,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              // Painted route area
-              Expanded(
-                flex: 3,
-                child: AspectRatio(
-                  aspectRatio: 1,
-                  child: Container(
-                    margin: EdgeInsets.all(8.0),
-                    decoration: BoxDecoration(
-                      color: Colors.lightBlueAccent.withOpacity(0.3),
-                      borderRadius: BorderRadius.circular(16.0),
-                    ),
-                    child: FutureBuilder<ui.Image>(
-                      future: landmarkImageFuture,
-                      builder: (BuildContext context, AsyncSnapshot<ui.Image> snapshot) {
-                        if (snapshot.connectionState == ConnectionState.done &&
-                            snapshot.hasData) {
-                          return CustomPaint(
-                            painter: RouteDesignPainter(
-                              selectedRoute: widget.selectShape,
-                              diameter: widget.diameter,
-                              altitude: widget.altitude,
-                              landmarkImage: snapshot.data!,
-                              progress: 0.5,
-                            ),
-                          );
-                        }else if (snapshot.hasError) {
-                          return Text('Error loading image');
-                        } else {
-                          return CircularProgressIndicator();
-                        }
-                      },
+              mainAxisAlignment: MainAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // Painted route area
+                Expanded(
+                  flex: 3,
+                  child: AspectRatio(
+                    aspectRatio: 1,
+                    child: Container(
+                      margin: EdgeInsets.all(8.0),
+                      decoration: BoxDecoration(
+                        color: Colors.lightBlueAccent.withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(16.0),
+                      ),
+                      child: FutureBuilder<List<ui.Image>>(
+                        future: Future.wait([landmarkImageFuture, chargingStationImageFuture]),
+                        builder: (BuildContext context, AsyncSnapshot<List<ui.Image>> snapshot) {
+                          if (snapshot.connectionState == ConnectionState.done &&
+                              snapshot.hasData) {
+                            final ui.Image landmarkImage = snapshot.data![0];
+                            final ui.Image chargingStationImage = snapshot.data![1];
+                            return CustomPaint(
+                              painter: RouteDesignPainter(
+                                selectedRoute: widget.selectShape,
+                                diameter: widget.diameter,
+                                altitude: widget.altitude,
+                                landmarkImage: landmarkImage,
+                                chargingStationImage: chargingStationImage,
+                                //progress: _animationController.value,
+                                progress: 1,
+                              ),
+                            );
+
+                          }else if (snapshot.hasError) {
+                            return Text('Error: ${snapshot.error}');
+                          } else {
+                            return const CircularProgressIndicator();
+                          }
+                        },
+                      ),
                     ),
                   ),
                 ),
-              ),
 
-              // Spacer can be used to give some space between items, if needed
-              // Spacer(flex: 1),
-              // Text description area for altitude and diameter
-              Expanded(
-                flex: 2, // Adjust flex factor to control width proportion
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text('Flying Altitude: ${widget.altitude.toString()}m'),
-                    Text('Diameter: ${widget.diameter.toString()}m'),
-                  ],
+                // Spacer can be used to give some space between items, if needed
+                // Spacer(flex: 1),
+                // Text description area for altitude and diameter
+                Expanded(
+                  flex: 2, // Adjust flex factor to control width proportion
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text('Flying Altitude: ${widget.altitude.toString()}m'),
+                      Text('Diameter: ${widget.diameter.toString()}m'),
+                    ],
+                  ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
           ),
           // Start button
           Expanded(
             flex: 1,
             child: Padding(
               padding: const EdgeInsets.all(16.0),
-            child:ElevatedButton(
-              onPressed: isFlightStarted ? _onCancelPressed : _onStartPressed,
-              child: Text(isFlightStarted ? 'Cancel' : 'Start',
-                style: TextStyle(
-                  fontSize: 24, // Set your desired font size here
-                  //fontWeight: FontWeight.bold, // If you want your font to be bold
-                  // other text styling as needed
+              child:ElevatedButton(
+                onPressed: isFlightStarted ? _onCancelPressed : _onStartPressed,
+                child: Text(isFlightStarted ? 'Cancel' : 'Start',
+                  style: TextStyle(
+                    fontSize: 24, // Set your desired font size here
+                    //fontWeight: FontWeight.bold, // If you want your font to be bold
+                    // other text styling as needed
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  primary: isFlightStarted ? Colors.red : Colors.green,
+                  minimumSize: Size(300, 70),// Change color based on state
                 ),
               ),
-              style: ElevatedButton.styleFrom(
-                primary: isFlightStarted ? Colors.red : Colors.green,
-                minimumSize: Size(300, 70),// Change color based on state
-              ),
             ),
-          ),
           ),
         ],
       ),
