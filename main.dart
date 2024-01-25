@@ -3,7 +3,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:intl/intl.dart';
 import 'dart:math';
+import 'dart:async';
 import 'dart:ui' as ui;
+import 'dart:typed_data';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:webview_flutter/webview_flutter.dart';
 //global variable
 class Drone {
@@ -64,6 +67,17 @@ int selectedDroneIndex = 0;
 String fromWhereToSelectionPage = '';
 //List<List<String>> storedRoutes= [];
 List<Drone> droneList = [];
+
+Future<ui.Image> loadImage(String assetPath) async {
+  ByteData data = await rootBundle.load(assetPath);
+  Uint8List bytes = data.buffer.asUint8List();
+  final Completer<ui.Image> completer = Completer();
+  ui.decodeImageFromList(bytes, (ui.Image img) {
+    completer.complete(img);
+  });
+  return completer.future;
+}
+
 
 void main() => runApp(MyApp());
 
@@ -414,11 +428,15 @@ class RouteDesignPage extends StatefulWidget {
   _RouteDesignPageState createState() => _RouteDesignPageState();
 }
 
-class _RouteDesignPageState extends State<RouteDesignPage> {
+class _RouteDesignPageState extends State<RouteDesignPage> with SingleTickerProviderStateMixin {
   int _selectedRoute = 1;
   double _diameter = 10; // Default diameter
   double _altitude = 0; // Default altitude
   bool _testFlightStarted = false;
+  late final Future<ui.Image> landmarkImageFuture;
+  late final Future<ui.Image> chargingStationImageFuture;
+  late AnimationController _animationController;
+  late Animation<double> _animation;
   void _saveRoute(String routeName) {
     final routeData = {
       'name': routeName,
@@ -523,15 +541,46 @@ class _RouteDesignPageState extends State<RouteDesignPage> {
       },
     );
   }
+  @override
+  void initState() {
+    super.initState();
+    landmarkImageFuture = loadImage('assets/images/drone1.png');
+    chargingStationImageFuture = loadImage('assets/images/charging_station.png');
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 5), // Adjust duration to control the speed
+    )..repeat();
+
+    /*_animation = Tween<double>(begin: 0.0, end: 1.0).animate(_animationController)
+      ..addListener(() {
+        setState(() {}); // Causes the widget to rebuild on animation tick
+      });*/
+    _animationController.addListener(() {
+      setState(() {});
+    });
+  }
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+  void startAnimation() {
+    _animationController.forward();
+  }
+
+  void stopAnimation() {
+    _animationController.stop();
+  }
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Select Route'),
+        title: const Text('Select Route'),
       ),
       body: SingleChildScrollView(
         child: Column(
           children: [
-            SizedBox(height: 16),
+            const SizedBox(height: 16),
             Text('Diameter: ${_diameter.toStringAsFixed(1)} meters'),
             Slider(
               min: 0,
@@ -545,7 +594,7 @@ class _RouteDesignPageState extends State<RouteDesignPage> {
                 });
               },
             ),
-            SizedBox(height: 16),
+            const SizedBox(height: 16),
             Text('Altitude: ${_altitude.toStringAsFixed(1)} meters'),
             Slider(
               min: 0,
@@ -562,17 +611,36 @@ class _RouteDesignPageState extends State<RouteDesignPage> {
             AspectRatio(
               aspectRatio: 1,
               child: Container(
-                margin: EdgeInsets.all(16.0),
+                margin: const EdgeInsets.all(16.0),
                 decoration: BoxDecoration(
                   color: Colors.lightBlueAccent.withOpacity(0.3),
                   borderRadius: BorderRadius.circular(16.0),
                 ),
-                child: CustomPaint(
-                  painter: RouteDesignPainter(
-                    selectedRoute: _selectedRoute,
-                    diameter: _diameter,
-                    altitude: _altitude,
-                  ),
+                child: FutureBuilder<List<ui.Image>>(
+                  future: Future.wait([landmarkImageFuture, chargingStationImageFuture]),
+                  builder: (BuildContext context, AsyncSnapshot<List<ui.Image>> snapshot) {
+                    if (snapshot.connectionState == ConnectionState.done &&
+                        snapshot.hasData) {
+                      final ui.Image landmarkImage = snapshot.data![0];
+                      final ui.Image chargingStationImage = snapshot.data![1];
+                      return CustomPaint(
+                        painter: RouteDesignPainter(
+                          selectedRoute: _selectedRoute,
+                          diameter: _diameter,
+                          altitude: _altitude,
+                          landmarkImage: landmarkImage,
+                          chargingStationImage: chargingStationImage,
+                          //progress: _animationController.value,
+                          progress: 1,
+                        ),
+                      );
+
+                    }else if (snapshot.hasError) {
+                      return Text('Error: ${snapshot.error}');
+                    } else {
+                      return const CircularProgressIndicator();
+                    }
+                  },
                 ),
               ),
             ),
@@ -592,12 +660,20 @@ class _RouteDesignPageState extends State<RouteDesignPage> {
             ),
             ElevatedButton(
               onPressed: _showTestFlightDialog,
-              child: Text('Test Flight'),
+              child: const Text('Test Flight'),
             ),
             ElevatedButton(
               onPressed: _testFlightStarted ? _promptRouteName : null, // Call _promptRouteName on press
-              child: Text('Save Route'),
+              child: const Text('Save Route'),
             ),
+            /*ElevatedButton(
+              onPressed: startAnimation,
+              child: Text('Start Animation'),
+            ),
+            ElevatedButton(
+              onPressed: stopAnimation,
+              child: Text('Stop Animation'),
+            ),*/
           ],
         ),
       ),
@@ -609,11 +685,28 @@ class RouteDesignPainter extends CustomPainter {
   final int selectedRoute;
   final double diameter;
   final double altitude;
+  final ui.Image landmarkImage; // Assuming you have a ui.Image for the landmark
+  final ui.Image chargingStationImage;
+  final double progress; // A value between 0.0 and 1.0 representing the progress along the path
 
-  RouteDesignPainter({required this.selectedRoute, required this.diameter, required this.altitude});
+  RouteDesignPainter({required this.selectedRoute, required this.diameter, required this.altitude, required this.landmarkImage,required this.chargingStationImage,
+    required this.progress,});
 
 
 
+
+  Offset _calculateImagePosition(Size size, Offset center, double radius) {
+    // This method should calculate the exact position where you want to draw the image.
+    // For simplicity, here we're using the center of the canvas which might need adjustment.
+    return center;
+  }
+
+  void _drawChargingStationImage(Canvas canvas, Offset position) {
+    final srcRect = Rect.fromLTWH(0, 0, chargingStationImage.width.toDouble(), chargingStationImage.height.toDouble());
+    final dstRect = Rect.fromCenter(center: position, width: 50.0, height: 50.0);  // Adjust size as needed
+
+    canvas.drawImageRect(chargingStationImage, srcRect, dstRect, Paint());
+  }
   @override
   void paint(Canvas canvas, Size size) {
     var paint = Paint()
@@ -623,48 +716,86 @@ class RouteDesignPainter extends CustomPainter {
 
     var center = Offset(size.width / 2, size.height / 2);
     var radius = (size.width / 2) * (diameter / 10); // Calculate radius based on diameter
+    Path path;
+    Offset imagePosition = _calculateImagePosition(size, center, radius);
 
     switch (selectedRoute) {
       case 1:
-        canvas.drawCircle(center, radius, paint);
+        path = Path()..addOval(Rect.fromCircle(center: center, radius: radius));
+        canvas.drawPath(path, paint);
+        _drawChargingStationImage(canvas, imagePosition);
         break;
       case 2:
-        var path = Path()
+        path = Path()
           ..moveTo(center.dx, center.dy - radius)
           ..arcToPoint(
             Offset(center.dx, center.dy + radius),
             radius: Radius.circular(radius),
           );
         canvas.drawPath(path, paint);
+        _drawChargingStationImage(canvas, imagePosition);
         break;
       case 3:
-        var path = Path()
+        path = Path()
           ..moveTo(center.dx, center.dy - radius)
           ..lineTo(center.dx + radius, center.dy + radius)
           ..lineTo(center.dx - radius, center.dy + radius)
           ..close();
         canvas.drawPath(path, paint);
+        _drawChargingStationImage(canvas, imagePosition);
         break;
       case 4:
-        var rect = Rect.fromCenter(center: center, width: 2 * radius, height: 2 * radius);
-        canvas.drawRect(rect, paint);
+        path = Path()
+          ..addRect(Rect.fromCenter(center: center, width: 2 * radius, height: 2 * radius));
+        canvas.drawPath(path, paint);
+        _drawChargingStationImage(canvas, imagePosition);
         break;
       case 5:
-        var path = Path()
+        path = Path()
           ..moveTo(center.dx, center.dy - radius)
           ..lineTo(center.dx + radius, center.dy)
           ..lineTo(center.dx, center.dy + radius)
           ..lineTo(center.dx - radius, center.dy)
           ..close();
         canvas.drawPath(path, paint);
+        _drawChargingStationImage(canvas, imagePosition);
         break;
+      default:
+        throw 'Route $selectedRoute not recognized';
+    }
+
+
+    // Drawing the landmark along the path
+    if (path != null) {
+      ui.PathMetric pathMetric = path.computeMetrics().first;
+      ui.Tangent? tangent = pathMetric.getTangentForOffset(pathMetric.length * progress);
+
+      if (tangent != null) {
+        // Define the source rectangle from the image
+        final src = Rect.fromLTWH(0, 0, landmarkImage.width.toDouble(), landmarkImage.height.toDouble());
+
+        // Define the destination rectangle on the canvas
+        // Adjust the width and height as needed
+        const dstWidth = 50.0;
+        const dstHeight = 50.0;
+        final dst = Rect.fromCenter(
+          center: tangent.position,
+          width: dstWidth,
+          height: dstHeight,
+        );
+
+        // Draw the resized image
+        canvas.drawImageRect(landmarkImage, src, dst, Paint());
+      }
     }
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+  bool shouldRepaint(covariant RouteDesignPainter oldDelegate) {
+    return oldDelegate.progress != progress || oldDelegate.selectedRoute != selectedRoute;
+    //return true;
+  }
 }
-
 class ScheduleMissionPage extends StatefulWidget {
   @override
   _ScheduleMissionPageState createState() => _ScheduleMissionPageState();
@@ -1435,7 +1566,8 @@ class SavedRoutesPage extends StatefulWidget {
 class _SavedRoutesPageState extends State<SavedRoutesPage> {
   // This should be populated with your saved routes
   bool _isEditMode = false;
-
+  late final Future<ui.Image> landmarkImageFuture;
+  late final Future<ui.Image> chargingStationImageFuture;
   int _getRouteShapeInt(String routeNumber) {
     switch (routeNumber) {
       case 'Circular':
@@ -1451,6 +1583,12 @@ class _SavedRoutesPageState extends State<SavedRoutesPage> {
       default:
         return 1;
     }
+  }
+  @override
+  void initState() {
+    super.initState();
+    landmarkImageFuture = loadImage('assets/images/drone1.png');
+    chargingStationImageFuture = loadImage('assets/images/charging_station.png');
   }
   @override
   Widget build(BuildContext context) {
@@ -1538,12 +1676,31 @@ class _SavedRoutesPageState extends State<SavedRoutesPage> {
                               color: Colors.lightBlueAccent.withOpacity(0.3),
                               borderRadius: BorderRadius.circular(16.0),
                             ),
-                            child: CustomPaint(
-                              painter: RouteDesignPainter(
-                                selectedRoute: _getRouteShapeInt(route['shape']),
-                                diameter: route['diameter'],
-                                altitude: route['altitude'],
-                              ),
+                            child: FutureBuilder<List<ui.Image>>(
+                              future: Future.wait([landmarkImageFuture, chargingStationImageFuture]),
+                              builder: (BuildContext context, AsyncSnapshot<List<ui.Image>> snapshot) {
+                                if (snapshot.connectionState == ConnectionState.done &&
+                                    snapshot.hasData) {
+                                  final ui.Image landmarkImage = snapshot.data![0];
+                                  final ui.Image chargingStationImage = snapshot.data![1];
+                                  return CustomPaint(
+                                    painter: RouteDesignPainter(
+                                      selectedRoute: _getRouteShapeInt(route['shape']),
+                                      diameter: route['diameter'],
+                                      altitude: route['altitude'],
+                                      landmarkImage: landmarkImage,
+                                      chargingStationImage: chargingStationImage,
+                                      //progress: _animationController.value,
+                                      progress: 1,
+                                    ),
+                                  );
+
+                                }else if (snapshot.hasError) {
+                                  return Text('Error: ${snapshot.error}');
+                                } else {
+                                  return const CircularProgressIndicator();
+                                }
+                              },
                             ),
                           ),
                         ),
@@ -1597,7 +1754,8 @@ class FlyingPage extends StatefulWidget {
 
 class _FlyingPageState extends State<FlyingPage> {
   bool isFlightStarted = false;
-
+  late final Future<ui.Image> landmarkImageFuture;
+  late final Future<ui.Image> chargingStationImageFuture;
   void _onStartPressed() {
     showDialog(
       context: context,
@@ -1669,6 +1827,12 @@ class _FlyingPageState extends State<FlyingPage> {
     }
   }*/
   @override
+  void initState() {
+    super.initState();
+    landmarkImageFuture = loadImage('assets/images/drone1.png');
+    chargingStationImageFuture = loadImage('assets/images/charging_station.png');
+  }
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
@@ -1727,68 +1891,87 @@ class _FlyingPageState extends State<FlyingPage> {
           Expanded(
             flex: 4,
             child: Row(
-            mainAxisAlignment: MainAxisAlignment.start,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              // Painted route area
-              Expanded(
-                flex: 3,
-                child: AspectRatio(
-                  aspectRatio: 1,
-                  child: Container(
-                    margin: EdgeInsets.all(8.0),
-                    decoration: BoxDecoration(
-                      color: Colors.lightBlueAccent.withOpacity(0.3),
-                      borderRadius: BorderRadius.circular(16.0),
-                    ),
-                    child: CustomPaint(
-                      painter: RouteDesignPainter(
-                        selectedRoute: widget.selectShape,
-                        diameter: widget.diameter,
-                        altitude: widget.altitude,
+              mainAxisAlignment: MainAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // Painted route area
+                Expanded(
+                  flex: 3,
+                  child: AspectRatio(
+                    aspectRatio: 1,
+                    child: Container(
+                      margin: EdgeInsets.all(8.0),
+                      decoration: BoxDecoration(
+                        color: Colors.lightBlueAccent.withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(16.0),
+                      ),
+                      child: FutureBuilder<List<ui.Image>>(
+                        future: Future.wait([landmarkImageFuture, chargingStationImageFuture]),
+                        builder: (BuildContext context, AsyncSnapshot<List<ui.Image>> snapshot) {
+                          if (snapshot.connectionState == ConnectionState.done &&
+                              snapshot.hasData) {
+                            final ui.Image landmarkImage = snapshot.data![0];
+                            final ui.Image chargingStationImage = snapshot.data![1];
+                            return CustomPaint(
+                              painter: RouteDesignPainter(
+                                selectedRoute: widget.selectShape,
+                                diameter: widget.diameter,
+                                altitude: widget.altitude,
+                                landmarkImage: landmarkImage,
+                                chargingStationImage: chargingStationImage,
+                                //progress: _animationController.value,
+                                progress: 1,
+                              ),
+                            );
+
+                          }else if (snapshot.hasError) {
+                            return Text('Error: ${snapshot.error}');
+                          } else {
+                            return const CircularProgressIndicator();
+                          }
+                        },
                       ),
                     ),
                   ),
                 ),
-              ),
 
-              // Spacer can be used to give some space between items, if needed
-              // Spacer(flex: 1),
-              // Text description area for altitude and diameter
-              Expanded(
-                flex: 2, // Adjust flex factor to control width proportion
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text('Flying Altitude: ${widget.altitude.toString()}m'),
-                    Text('Diameter: ${widget.diameter.toString()}m'),
-                  ],
+                // Spacer can be used to give some space between items, if needed
+                // Spacer(flex: 1),
+                // Text description area for altitude and diameter
+                Expanded(
+                  flex: 2, // Adjust flex factor to control width proportion
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text('Flying Altitude: ${widget.altitude.toString()}m'),
+                      Text('Diameter: ${widget.diameter.toString()}m'),
+                    ],
+                  ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
           ),
           // Start button
           Expanded(
             flex: 1,
             child: Padding(
               padding: const EdgeInsets.all(16.0),
-            child:ElevatedButton(
-              onPressed: isFlightStarted ? _onCancelPressed : _onStartPressed,
-              child: Text(isFlightStarted ? 'Cancel' : 'Start',
-                style: TextStyle(
-                  fontSize: 24, // Set your desired font size here
-                  //fontWeight: FontWeight.bold, // If you want your font to be bold
-                  // other text styling as needed
+              child:ElevatedButton(
+                onPressed: isFlightStarted ? _onCancelPressed : _onStartPressed,
+                child: Text(isFlightStarted ? 'Cancel' : 'Start',
+                  style: TextStyle(
+                    fontSize: 24, // Set your desired font size here
+                    //fontWeight: FontWeight.bold, // If you want your font to be bold
+                    // other text styling as needed
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  primary: isFlightStarted ? Colors.red : Colors.green,
+                  minimumSize: Size(300, 70),// Change color based on state
                 ),
               ),
-              style: ElevatedButton.styleFrom(
-                primary: isFlightStarted ? Colors.red : Colors.green,
-                minimumSize: Size(300, 70),// Change color based on state
-              ),
             ),
-          ),
           ),
         ],
       ),
