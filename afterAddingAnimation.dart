@@ -1570,11 +1570,12 @@ class SavedRoutesPage extends StatefulWidget {
   _SavedRoutesPageState createState() => _SavedRoutesPageState();
 }
 
-class _SavedRoutesPageState extends State<SavedRoutesPage> {
+class _SavedRoutesPageState extends State<SavedRoutesPage> with SingleTickerProviderStateMixin{
   // This should be populated with your saved routes
   bool _isEditMode = false;
   late final Future<ui.Image> landmarkImageFuture;
   late final Future<ui.Image> chargingStationImageFuture;
+  late AnimationController _animationController;
   int _getRouteShapeInt(String routeNumber) {
     switch (routeNumber) {
       case 'Circular':
@@ -1596,6 +1597,11 @@ class _SavedRoutesPageState extends State<SavedRoutesPage> {
     super.initState();
     landmarkImageFuture = loadImage('assets/images/drone1.png');
     chargingStationImageFuture = loadImage('assets/images/charging_station.png');
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 5), // Adjust duration to control the speed
+    )..repeat();
+
   }
   @override
   Widget build(BuildContext context) {
@@ -1685,27 +1691,33 @@ class _SavedRoutesPageState extends State<SavedRoutesPage> {
                             ),
                             child: FutureBuilder<List<ui.Image>>(
                               future: Future.wait([landmarkImageFuture, chargingStationImageFuture]),
-                              builder: (BuildContext context, AsyncSnapshot<List<ui.Image>> snapshot) {
-                                if (snapshot.connectionState == ConnectionState.done &&
-                                    snapshot.hasData) {
-                                  final ui.Image landmarkImage = snapshot.data![0];
-                                  final ui.Image chargingStationImage = snapshot.data![1];
-                                  return CustomPaint(
-                                    painter: RouteDesignPainter(
-                                      selectedRoute: _getRouteShapeInt(route['shape']),
-                                      diameter: route['diameter'],
-                                      altitude: route['altitude'],
-                                      landmarkImage: landmarkImage,
-                                      chargingStationImage: chargingStationImage,
-                                      //progress: _animationController.value,
-                                      progress: 1,
-                                    ),
+                              builder: (context, snapshot) {
+                                if (snapshot.connectionState == ConnectionState.waiting) {
+                                  return const CircularProgressIndicator(); // Loading indicator while waiting for images
+                                }
+                                if (snapshot.hasError) {
+                                  return Text("Error loading images: ${snapshot.error}");
+                                }
+                                if (snapshot.hasData) {
+                                  // Images are loaded, now passing them to the CustomPainter
+                                  return AnimatedBuilder(
+                                    animation: _animationController,
+                                    builder: (context, child) {
+                                      return CustomPaint(
+                                        painter: RouteDesignPainter(
+                                          selectedRoute: _getRouteShapeInt(route['shape']),
+                                          diameter: route['diameter'],
+                                          altitude: route['altitude'],
+                                          landmarkImage: snapshot.data![0],
+                                          chargingStationImage: snapshot.data![1],
+                                          progress: _animationController.value,
+                                        ),
+                                      );
+                                    },
                                   );
-
-                                }else if (snapshot.hasError) {
-                                  return Text('Error: ${snapshot.error}');
                                 } else {
-                                  return const CircularProgressIndicator();
+                                  // This should not happen if images are loaded correctly
+                                  return const Text("Unknown error");
                                 }
                               },
                             ),
@@ -1739,6 +1751,11 @@ class _SavedRoutesPageState extends State<SavedRoutesPage> {
 
     );
   }
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
 }
 class FlyingPage extends StatefulWidget {
   final String routeName;
@@ -1759,10 +1776,11 @@ class FlyingPage extends StatefulWidget {
   _FlyingPageState createState() => _FlyingPageState();
 }
 
-class _FlyingPageState extends State<FlyingPage> {
+class _FlyingPageState extends State<FlyingPage> with SingleTickerProviderStateMixin{
   bool isFlightStarted = false;
   late final Future<ui.Image> landmarkImageFuture;
   late final Future<ui.Image> chargingStationImageFuture;
+  late AnimationController _animationController;
   void _onStartPressed() {
     showDialog(
       context: context,
@@ -1838,6 +1856,10 @@ class _FlyingPageState extends State<FlyingPage> {
     super.initState();
     landmarkImageFuture = loadImage('assets/images/drone1.png');
     chargingStationImageFuture = loadImage('assets/images/charging_station.png');
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 5), // Adjust duration to control the speed
+    )..repeat();
   }
   @override
   Widget build(BuildContext context) {
@@ -1914,27 +1936,33 @@ class _FlyingPageState extends State<FlyingPage> {
                       ),
                       child: FutureBuilder<List<ui.Image>>(
                         future: Future.wait([landmarkImageFuture, chargingStationImageFuture]),
-                        builder: (BuildContext context, AsyncSnapshot<List<ui.Image>> snapshot) {
-                          if (snapshot.connectionState == ConnectionState.done &&
-                              snapshot.hasData) {
-                            final ui.Image landmarkImage = snapshot.data![0];
-                            final ui.Image chargingStationImage = snapshot.data![1];
-                            return CustomPaint(
-                              painter: RouteDesignPainter(
-                                selectedRoute: widget.selectShape,
-                                diameter: widget.diameter,
-                                altitude: widget.altitude,
-                                landmarkImage: landmarkImage,
-                                chargingStationImage: chargingStationImage,
-                                //progress: _animationController.value,
-                                progress: 1,
-                              ),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState == ConnectionState.waiting) {
+                            return const CircularProgressIndicator(); // Loading indicator while waiting for images
+                          }
+                          if (snapshot.hasError) {
+                            return Text("Error loading images: ${snapshot.error}");
+                          }
+                          if (snapshot.hasData) {
+                            // Images are loaded, now passing them to the CustomPainter
+                            return AnimatedBuilder(
+                              animation: _animationController,
+                              builder: (context, child) {
+                                return CustomPaint(
+                                  painter: RouteDesignPainter(
+                                    selectedRoute: widget.selectShape,
+                                    diameter: widget.diameter,
+                                    altitude: widget.altitude,
+                                    landmarkImage: snapshot.data![0],
+                                    chargingStationImage: snapshot.data![1],
+                                    progress: _animationController.value,
+                                  ),
+                                );
+                              },
                             );
-
-                          }else if (snapshot.hasError) {
-                            return Text('Error: ${snapshot.error}');
                           } else {
-                            return const CircularProgressIndicator();
+                            // This should not happen if images are loaded correctly
+                            return const Text("Unknown error");
                           }
                         },
                       ),
@@ -1983,6 +2011,11 @@ class _FlyingPageState extends State<FlyingPage> {
         ],
       ),
     );
+  }
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
   }
 }
 
