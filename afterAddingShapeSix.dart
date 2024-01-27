@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:intl/intl.dart';
+import 'package:video_player/video_player.dart';
 import 'dart:math' as math;
 import 'dart:async';
 import 'dart:ui' as ui;
@@ -59,6 +60,14 @@ class MissionRoutine {
     this.isActive = false,
   });
 }
+class Anomaly {
+  final String droneName;
+  final String time;
+  final String anomalyType;
+  final String videoUrl;
+
+  Anomaly({required this.droneName, required this.time, required this.anomalyType, required this.videoUrl});
+}
 List<Map<String, dynamic>> globalRouteList = [];
 List<Mission> missionsSingle = [];
 List<MissionRoutine> missionsRoutine = [];
@@ -85,7 +94,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Drone App',
+      title: 'Dobermann',
       theme: ThemeData(
         brightness: Brightness.dark,
         primarySwatch: Colors.blue,
@@ -212,13 +221,13 @@ class CameraStreamsPage extends StatelessWidget {
           child: Column(
             children: <Widget>[
               // First camera stream block
-              buildCameraStreamBlock(context, 'http://192.168.1.111:8080/?action=stream', 'Garden'),
+              buildCameraStreamBlock(context, 'assets/images/tableTennisCourt.png', 'Table tennis court'),
               SizedBox(height: 16),
               // Second camera stream block
-              buildCameraStreamBlock(context, 'http://192.168.1.111:8081/?action=stream', 'Kitchen'),
+              buildCameraStreamBlock(context, 'assets/images/recCenter.png', 'Rec center'),
               SizedBox(height: 16),
               // Third camera stream block
-              buildCameraStreamBlock(context, 'http://192.168.1.111:8082/?action=stream', 'Living room'),
+              buildCameraStreamBlock(context, 'assets/images/parkingLot.png', 'Parking lot'),
               // Add more blocks if needed
             ],
           ),
@@ -232,25 +241,19 @@ class CameraStreamsPage extends StatelessWidget {
     //WebViewController controller = WebViewController();
     //controller.loadUrl(streamUrl);
 
-    return Container(
-      height: 200, // Specify your desired height
-      decoration: BoxDecoration(
-        color: Colors.grey,
-        border: Border.all(color: Colors.grey),
-        borderRadius: BorderRadius.circular(8.0),
-      ),
-      child: Stack(
+    return Stack(
         children: [
-          /*WebView(
-            initialUrl: streamUrl,
-            javascriptMode: JavascriptMode.unrestricted,
-            onWebViewCreated: (WebViewController webViewController) {
-              controller = webViewController;
-            },
-          ),*/
+          ClipRRect(
+            borderRadius: BorderRadius.circular(20.0), // Set your desired radius here
+            child: Image.asset(
+              streamUrl, // Replace with your image asset path
+              fit: BoxFit.cover,
+              height: 200,
+            ),
+          ),
           Positioned(
             left: 8,
-            bottom: 8,
+            bottom: 1,
             right: 8,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -258,7 +261,7 @@ class CameraStreamsPage extends StatelessWidget {
                 Expanded(
                   child: Text(
                     description,
-                    style: TextStyle(
+                    style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
                     ),
@@ -275,14 +278,13 @@ class CameraStreamsPage extends StatelessWidget {
                       ),
                     );
                   },
-                  child: Text('Manage'),
+                  child: const Text('Manage'),
                 ),
               ],
             ),
           ),
         ],
-      ),
-    );
+      );
   }
 }
 
@@ -305,10 +307,19 @@ class SingleStreamPage extends StatefulWidget {
 class _SingleStreamPageState extends State<SingleStreamPage> {
   late int _selectedRoute; // Initialize with a late variable
   String _routeName = '';
+  late VideoPlayerController _controller;
+  bool _isFullScreen = false;
+
   @override
   void initState() {
     super.initState();
-    _selectedRoute = widget.selectedRoute; // Assign the initial value from the widget
+    _selectedRoute = widget.selectedRoute;
+    _controller = VideoPlayerController.asset('assets/videos/nonFlying.mp4')
+      ..initialize().then((_) {
+        setState(() {}); // Ensure the first frame is shown after initializing the video
+        // Autoplay if needed
+        _controller.play();
+      });
   }
 
   void _handleRouteSelection(int route) {
@@ -332,27 +343,46 @@ class _SingleStreamPageState extends State<SingleStreamPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.location),
+        automaticallyImplyLeading: !_isFullScreen,
       ),
       body: Column(
-        children: [
-          SingleChildScrollView(
-            child: Container(
-              height: 200, // Specify your desired height
-              decoration: BoxDecoration(
-                color: Colors.grey,
-                border: Border.all(color: Colors.grey),
-                borderRadius: BorderRadius.circular(8.0),
-              ),
+        children: <Widget>[
+          Stack(
+            alignment: Alignment.bottomRight,
+            children: <Widget>[
+              ClipRRect(
+              borderRadius: BorderRadius.circular(20.0), // Set your desired radius here
+              child: _controller.value.isInitialized
+                  ? AspectRatio(
+                aspectRatio: _controller.value.aspectRatio,
+                child: VideoPlayer(_controller),
+              )
+                  : const CircularProgressIndicator(),
             ),
+              Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: IconButton(
+                  icon: Icon(
+                    _isFullScreen ? Icons.fullscreen_exit : Icons.fullscreen,
+                    color: Colors.white,
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      _isFullScreen = !_isFullScreen;
+                    });
+                  },
+                ),
+              ),
+            ],
           ),
           // Route Section
           Card(
             margin: EdgeInsets.all(8.0),
             child: ListTile(
-              leading: Icon(Icons.alt_route),
-              title: Text('Create New Route'),
+              leading: const Icon(Icons.alt_route),
+              title: const Text('Create New Route'),
               subtitle: Text('Latest route created: $_routeName'),
-              trailing: Icon(Icons.chevron_right),
+              trailing: const Icon(Icons.chevron_right),
               onTap: () {
                 // Handle tap action for Route
                 Navigator.push(
@@ -366,12 +396,12 @@ class _SingleStreamPageState extends State<SingleStreamPage> {
           ),
           // Start Mission Card
           Card(
-            margin: EdgeInsets.all(8.0),
+            margin: const EdgeInsets.all(8.0),
             child: ListTile(
-              leading: Icon(Icons.flight),
-              title: Text('Start Mission'),
-              subtitle: Text('Start a flight mission from your saved route.'),
-              trailing: Icon(Icons.chevron_right),
+              leading: const Icon(Icons.flight),
+              title: const Text('Start Mission'),
+              subtitle: const Text('Start a flight mission from your saved route.'),
+              trailing: const Icon(Icons.chevron_right),
               onTap: () {
                 // Handle tap action for Route
                 Navigator.push(
@@ -384,12 +414,12 @@ class _SingleStreamPageState extends State<SingleStreamPage> {
             ),
           ),
           Card(
-            margin: EdgeInsets.all(8.0),
+            margin: const EdgeInsets.all(8.0),
             child: ListTile(
-              leading: Icon(Icons.schedule),
-              title: Text('Schedule Mission'),
-              subtitle: Text('Set up the mission schedule for your device.'),
-              trailing: Icon(Icons.chevron_right),
+              leading: const Icon(Icons.schedule),
+              title: const Text('Schedule Mission'),
+              subtitle: const Text('Set up the mission schedule for your device.'),
+              trailing: const Icon(Icons.chevron_right),
               onTap: () {
                 // Handle tap action for Schedule Mission
                 Navigator.push(
@@ -403,18 +433,18 @@ class _SingleStreamPageState extends State<SingleStreamPage> {
           ),
           // Anomaly Records Section
           Card(
-            margin: EdgeInsets.all(8.0),
+            margin: const EdgeInsets.all(8.0),
             child: ListTile(
-              leading: Icon(Icons.record_voice_over),
-              title: Text('Anomaly Records'),
-              subtitle: Text('View the history of detected anomalies.'),
-              trailing: Icon(Icons.chevron_right),
+              leading: const Icon(Icons.record_voice_over),
+              title: const Text('Anomaly Records'),
+              subtitle: const Text('View the history of detected anomalies.'),
+              trailing: const Icon(Icons.chevron_right),
               onTap: () {
                 // Handle tap action for Anomaly Records
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => AnomalyRecordPage(),
+                    builder: (context) => const AnomalyRecordPage(),
                   ),
                 );
               },
@@ -423,6 +453,11 @@ class _SingleStreamPageState extends State<SingleStreamPage> {
         ],
       ),
     );
+  }
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
 }
 class RouteDesignPage extends StatefulWidget {
@@ -616,7 +651,7 @@ class _RouteDesignPageState extends State<RouteDesignPage> with SingleTickerProv
               child: Container(
                 margin: const EdgeInsets.all(16.0),
                 decoration: BoxDecoration(
-                  color: Colors.lightGreenAccent,
+                  color: Colors.lightBlueAccent.withOpacity(0.3),
                   borderRadius: BorderRadius.circular(16.0),
                 ),
                 child: FutureBuilder<List<ui.Image>>(
@@ -867,7 +902,7 @@ class RouteDesignPainter extends CustomPainter {
         }
 
         // Draw the landmark
-        final landmarkSize = Size(50.0, 50.0); // Adjust size as needed
+        final landmarkSize = sizeIndex == 0 ? const Size(50.0, 50.0) : const Size(80.0, 80.0); // Adjust size as needed
         final Rect landmarkRect = Rect.fromCenter(
           center: landmarkPosition,
           width: landmarkSize.width,
@@ -902,10 +937,12 @@ class RouteDesignPainter extends CustomPainter {
         // Adjust the width and height as needed
         const dstWidth = 50.0;
         const dstHeight = 50.0;
+        const dstWidthLarge = 80.0;
+        const dstHeightLarge = 80.0;
         final dst = Rect.fromCenter(
           center: tangent.position,
-          width: dstWidth,
-          height: dstHeight,
+          width: sizeIndex == 0 ? dstWidth : dstWidthLarge,
+          height: sizeIndex == 0 ? dstHeight : dstHeightLarge,
         );
 
         // Draw the resized image
@@ -1041,23 +1078,23 @@ class _ScheduleMissionPageState extends State<ScheduleMissionPage> with SingleTi
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Schedule Missions'),
+        title: const Text('Schedule Missions'),
         bottom: TabBar(
           controller: _tabController,
           tabs: [
-            Tab(text: 'Single Flight'),
-            Tab(text: 'Routine Flight'),
+             Tab(text: 'Single Flight'),
+             Tab(text: 'Routine Flight'),
           ],
         ),
         actions: <Widget>[
           if (_tabController.index == 0)
             IconButton(
-              icon: Icon(Icons.add),
+              icon: const Icon(Icons.add),
               onPressed: _addSingleFlight,
             ),
           if (_tabController.index == 1)
             IconButton(
-              icon: Icon(Icons.flight),
+              icon: const Icon(Icons.add),
               onPressed: _addRoutineFlight,
             ),
         ],
@@ -2362,37 +2399,12 @@ class AnomalyRecordPage extends StatefulWidget {
   _AnomalyRecordPageState createState() => _AnomalyRecordPageState();
 }
 class _AnomalyRecordPageState extends State<AnomalyRecordPage> {
-  final List<Map<String, String>> anomalies = [
-    {
-      'droneName': 'Garden',
-      'time': '2024-01-01 12:00',
-      'anomalyType': 'Intrusion Detected',
-      'imagePath': 'assets/image1.jpg',
-    },
-    {
-      'droneName': 'Garden',
-      'time': '2024-01-02 13:00',
-      'anomalyType': 'Signal Lost',
-      'imagePath': 'assets/image2.jpg',
-    },
-    /*{
-      'droneName': 'Living room',
-      'time': '2024-01-03 14:00',
-      'anomalyType': 'Battery Low',
-      'imagePath': 'assets/image1.jpg',
-    },
-    {
-      'droneName': 'Warehouse',
-      'time': '2024-01-04 15:00',
-      'anomalyType': 'Unresponsive',
-      'imagePath': 'assets/image1.jpg',
-    },
-    {
-      'droneName': 'Garage',
-      'time': '2024-01-05 16:00',
-      'anomalyType': 'Weather Alert',
-      'imagePath': 'assets/image1.jpg',
-    },*/
+  //late VideoPlayerController _controller;
+  //bool _isInitialized = false;
+  //String _error = '';
+  final List<Anomaly> anomalies = [
+    Anomaly(droneName: 'Table tennis court', time: '2024-01-09 12:40', anomalyType: 'Intrusion Detected', videoUrl: 'assets/videos/tabletennis.mp4'),
+    Anomaly(droneName: 'Rec center', time: '2024-01-17 18:30', anomalyType: 'Intrusion Detected', videoUrl: 'assets/videos/gym.mp4'),
   ];
   void _showDeleteConfirmationDialog(int index) {
     showDialog(
@@ -2430,56 +2442,94 @@ class _AnomalyRecordPageState extends State<AnomalyRecordPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Anomaly Records'),
-      ),
+      appBar: AppBar(title: const Text('Anomaly Records')),
       body: ListView.builder(
         itemCount: anomalies.length,
         itemBuilder: (context, index) {
-          final anomaly = anomalies[index];
-          return Card(
-            margin: EdgeInsets.all(10),
-            child: Column(
-              children: [
-                ListTile(
-                  leading: CircleAvatar(
-                    backgroundImage: AssetImage('assets/images/drone1.png'),
-                  ),
-                  title: Text(anomaly['droneName']!), // Drone name
-                  subtitle: Text('${anomaly['time']} - ${anomaly['anomalyType']}'),
-                  isThreeLine: true,
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Image.asset(
-                    anomaly['imagePath']!, // Anomaly image
-                    fit: BoxFit.cover,
-                    height: 200,
-                  ),
-                ),
-                ButtonBar(
-                  alignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    TextButton.icon(
-                      icon: Icon(Icons.download, color: Colors.blue),
-                      label: Text('Download', style: TextStyle(color: Colors.blue)),
-                      onPressed: () {
-                        // Implement download logic
-                      },
-                    ),
-                    TextButton.icon(
-                      icon: Icon(Icons.delete, color: Colors.red),
-                      label: Text('Delete', style: TextStyle(color: Colors.red)),
-                      onPressed: () => _showDeleteConfirmationDialog(index),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+          return AnomalyItem(
+            anomaly: anomalies[index],
+            onDelete: () => _showDeleteConfirmationDialog(index),
           );
         },
       ),
     );
   }
 }
+class AnomalyItem extends StatefulWidget {
+  final Anomaly anomaly;
+  final VoidCallback onDelete;
 
+  AnomalyItem({Key? key, required this.anomaly, required this.onDelete}) : super(key: key);
+
+  @override
+  _AnomalyItemState createState() => _AnomalyItemState();
+}
+
+class _AnomalyItemState extends State<AnomalyItem> {
+  late VideoPlayerController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = VideoPlayerController.asset(widget.anomaly.videoUrl)
+      ..initialize().then((_) {
+        setState(() {}); // Ensure the first frame is shown after initializing the video
+        // Autoplay if needed
+        _controller.play();
+      });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Column(
+        children: [
+          ListTile(
+            leading: const CircleAvatar(
+              backgroundImage: AssetImage('assets/images/drone1.png'),
+            ),
+            title: Text(widget.anomaly.droneName), // Drone name
+            subtitle: Text('${widget.anomaly.time} - ${widget.anomaly.anomalyType}'),
+            isThreeLine: true,
+          ),
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(20.0), // Set your desired radius here
+            child: _controller.value.isInitialized
+                ? AspectRatio(
+              aspectRatio: _controller.value.aspectRatio,
+              child: VideoPlayer(_controller),
+            )
+                : const CircularProgressIndicator(),
+          ),
+          ),
+          ButtonBar(
+            alignment: MainAxisAlignment.spaceAround,
+            children: [
+              TextButton.icon(
+                icon: const Icon(Icons.download, color: Colors.blue),
+                label: const Text('Download', style: TextStyle(color: Colors.blue)),
+                onPressed: () {
+                  // Implement download logic
+                },
+              ),
+              TextButton.icon(
+                icon: const Icon(Icons.delete, color: Colors.red),
+                label: const Text('Delete', style: TextStyle(color: Colors.red)),
+                onPressed: widget.onDelete,
+              ),
+            ],
+          ),
+          // ... other widgets like buttons
+        ],
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+}
