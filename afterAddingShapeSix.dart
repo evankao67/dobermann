@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'dart:convert';
 import 'package:intl/intl.dart';
+import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'dart:math' as math;
 import 'dart:async';
@@ -86,11 +88,35 @@ Future<ui.Image> loadImage(String assetPath) async {
   });
   return completer.future;
 }
+FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+FlutterLocalNotificationsPlugin();
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize the plugin
 
 
-void main() => runApp(MyApp());
+  // Set up the initialization settings for each platform
+  var initializationSettingsAndroid = AndroidInitializationSettings('app_icon');
+  var initializationSettingsIOS = DarwinInitializationSettings();
+  var initializationSettings = InitializationSettings(
+    android: initializationSettingsAndroid,
+    iOS: initializationSettingsIOS,
+  );
+
+  // Check if the app was launched by a notification
+  final NotificationAppLaunchDetails? notificationAppLaunchDetails = await flutterLocalNotificationsPlugin.getNotificationAppLaunchDetails();
+
+  // Now pass the NotificationAppLaunchDetails to the app (if needed)
+  runApp(MyApp(notificationAppLaunchDetails: notificationAppLaunchDetails));
+}
+
+//void main() => runApp(MyApp());
 
 class MyApp extends StatelessWidget {
+  final NotificationAppLaunchDetails? notificationAppLaunchDetails;
+
+  const MyApp({Key? key, this.notificationAppLaunchDetails}) : super(key: key);
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -100,12 +126,15 @@ class MyApp extends StatelessWidget {
         primarySwatch: Colors.blue,
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
-      home: DroneHomePage(),
+      home: DroneHomePage(notificationAppLaunchDetails: notificationAppLaunchDetails),
     );
   }
 }
 
 class DroneHomePage extends StatefulWidget {
+  final NotificationAppLaunchDetails? notificationAppLaunchDetails;
+
+  const DroneHomePage({Key? key, this.notificationAppLaunchDetails}) : super(key: key);
   @override
   _DroneHomePageState createState() => _DroneHomePageState();
 }
@@ -113,12 +142,21 @@ class DroneHomePage extends StatefulWidget {
 class _DroneHomePageState extends State<DroneHomePage> {
   int _selectedIndex = 0;
 
+  @override
+  void initState() {
+    super.initState();
+    // Check if the app was launched from a notification and update the selected index
+    if (widget.notificationAppLaunchDetails != null &&
+        widget.notificationAppLaunchDetails!.didNotificationLaunchApp) {
+      _selectedIndex = 1; // Assuming the RegistrationPage is at index 1
+    }
+  }
+
   void _onItemTapped(int index) {
     setState(() {
       _selectedIndex = index;
     });
   }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -137,24 +175,31 @@ class _DroneHomePageState extends State<DroneHomePage> {
           ),
         ],
       ),
-      body: _selectedIndex == 0 ? HomePage() : Container(), // Show HomePage for the first tab
-      // Add other pages for other tabs here
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: [
+          HomePage(), // Index 0
+          RegistrationPage(), // Index 1
+          // Add other pages for other tabs here
+        ],
+      ),
       bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed, // Fixed type when you have more than 3 items
-        backgroundColor: Colors.black, // Assuming a dark theme from the screenshot
-        selectedItemColor: Colors.white, // Color when an item is selected
-        unselectedItemColor: Colors.grey, // Color when an item is not selected
-        currentIndex: _selectedIndex, // Current index of the selected tab
-        onTap: _onItemTapped, // Callback when a tab is tapped
+        type: BottomNavigationBarType.fixed,
+        backgroundColor: Colors.black,
+        selectedItemColor: Colors.white,
+        unselectedItemColor: Colors.grey,
+        currentIndex: _selectedIndex,
+        onTap: _onItemTapped,
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.home),
             label: 'Home',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.search),
-            label: 'Discover',
+            icon: Icon(Icons.add_box),
+            label: 'Register',
           ),
+          // ... other items
           BottomNavigationBarItem(
             icon: Icon(Icons.notifications),
             label: 'Alerts',
@@ -334,6 +379,47 @@ class _SingleStreamPageState extends State<SingleStreamPage> {
       _routeName = routeName;
     });
   }
+  void _toggleFullScreen() {
+    setState(() {
+      _isFullScreen = !_isFullScreen;
+    });
+    if (_isFullScreen) {
+      // Enter full screen: Change orientation to landscape
+      SystemChrome.setPreferredOrientations([
+        DeviceOrientation.landscapeRight,
+        DeviceOrientation.landscapeLeft,
+      ]);
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersive);
+
+      // Navigate to a new route for full screen
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => Scaffold(
+            body: Center(
+              child: AspectRatio(
+                aspectRatio: _controller.value.aspectRatio,
+                child: VideoPlayer(_controller),
+              ),
+            ),
+            floatingActionButton: FloatingActionButton(
+              onPressed: _toggleFullScreen,
+              child: Icon(Icons.fullscreen_exit),
+            ),
+          ),
+        ),
+      );
+    } else {
+      // Exit full screen: Restore previous orientations
+      SystemChrome.setPreferredOrientations([
+        DeviceOrientation.portraitUp,
+        DeviceOrientation.portraitDown,
+      ]);
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+
+      // Use Navigator.pop if you pushed the full-screen page onto the Navigator stack
+      Navigator.of(context).pop();
+    }
+  }
   @override
   Widget build(BuildContext context) {
     // Replace with your actual WebViewController
@@ -349,28 +435,22 @@ class _SingleStreamPageState extends State<SingleStreamPage> {
         children: <Widget>[
           Stack(
             alignment: Alignment.bottomRight,
-            children: <Widget>[
+            children: [
               ClipRRect(
-              borderRadius: BorderRadius.circular(20.0), // Set your desired radius here
-              child: _controller.value.isInitialized
-                  ? AspectRatio(
-                aspectRatio: _controller.value.aspectRatio,
-                child: VideoPlayer(_controller),
-              )
-                  : const CircularProgressIndicator(),
-            ),
+                borderRadius: BorderRadius.circular(20.0),
+                child: _controller.value.isInitialized
+                    ? AspectRatio(
+                  aspectRatio: _controller.value.aspectRatio,
+                  child: VideoPlayer(_controller),
+                )
+                    : const CircularProgressIndicator(),
+              ),
               Padding(
                 padding: const EdgeInsets.all(8.0),
                 child: IconButton(
-                  icon: Icon(
-                    _isFullScreen ? Icons.fullscreen_exit : Icons.fullscreen,
-                    color: Colors.white,
-                  ),
-                  onPressed: () {
-                    setState(() {
-                      _isFullScreen = !_isFullScreen;
-                    });
-                  },
+                  icon: Icon(_isFullScreen ? Icons.fullscreen_exit : Icons.fullscreen),
+                  color: Colors.white,
+                  onPressed: _toggleFullScreen,
                 ),
               ),
             ],
@@ -590,7 +670,7 @@ class _RouteDesignPageState extends State<RouteDesignPage> with SingleTickerProv
     chargingStationImageFuture = loadImage('assets/images/chargingStation.png');
     _animationController = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 5), // Adjust duration to control the speed
+      duration: const Duration(seconds: 10), // Adjust duration to control the speed
     )..repeat();
 
     /*_animation = Tween<double>(begin: 0.0, end: 1.0).animate(_animationController)
@@ -633,7 +713,7 @@ class _RouteDesignPageState extends State<RouteDesignPage> with SingleTickerProv
               },
             ),
             const SizedBox(height: 16),
-            Text('Altitude: ${_altitude.toStringAsFixed(1)} meters'),
+            Text('Flying Altitude: ${_altitude.toStringAsFixed(1)} m'),
             Slider(
               min: 0,
               max: 5,
@@ -767,10 +847,12 @@ class RouteDesignPainter extends CustomPainter {
     var center = Offset(size.width / 2, size.height / 2);
     // change "12" to adjust the ratio between painting and the edge of the area. "10" reach the edge
     var radius = (size.width / 2) * (diameter / 12); // Calculate radius based on diameter
-    var centerTop = Offset(size.width / 2, size.height / 2 - radius);
+    var centerTop = Offset(size.width / 2 , size.height / 2 -radius);
+    var centerDown = Offset(size.width / 2, size.height / 2 + radius);
     Path path;
     Offset imagePosition = _calculateImagePosition(size, center, radius);
     Offset imagePositionForShapeSix = _calculateImagePosition(size, centerTop, radius);
+    Offset imagePositionForShapeSeven = _calculateImagePosition(size, centerDown, radius);
     // change "12" to adjust the ratio between painting and the edge of the area. "10" reach the edge
     final double sectorRadius = size.width / 2 * (diameter / 12); // Use diameter for the sector radius
     const double startAngle = 15 * (math.pi / 180); // Start angle for the sector (convert degrees to radians)
@@ -828,20 +910,67 @@ class RouteDesignPainter extends CustomPainter {
         break;
       case 3:
         //triangle code
-        path = Path()
+        /*path = Path()
           ..moveTo(center.dx, center.dy - radius)
           ..lineTo(center.dx + radius, center.dy + radius)
           ..lineTo(center.dx - radius, center.dy + radius)
           ..close();
         canvas.drawPath(path, paint);
-        _drawChargingStationImage(canvas, imagePosition);
+        _drawChargingStationImage(canvas, imagePosition);*/
+
+        //straight up
+        path = Path()
+          ..moveTo(center.dx, center.dy - radius) // Starting at the top center
+          ..lineTo(center.dx, center.dy + radius) // Drawing down to the right
+           // Drawing to the left
+          ..close(); // Closing the path back to the start
+
+        // Draw the path
+        canvas.drawPath(path, paint);
+        _drawChargingStationImage(canvas, imagePositionForShapeSeven);
+
+        Offset landmarkPosition;
+        double y = center.dy + radius - radius * progress *2;
+        landmarkPosition = Offset(center.dx, y);
+        final landmarkSize = sizeIndex == 0 ? const Size(50.0, 50.0) : const Size(80.0, 80.0); // Adjust size as needed
+        final Rect landmarkRect = Rect.fromCenter(
+          center: landmarkPosition,
+          width: landmarkSize.width,
+          height: landmarkSize.height,
+        );
+        final Rect src = Rect.fromLTWH(0, 0, landmarkImage.width.toDouble(), landmarkImage.height.toDouble());
+        canvas.drawImageRect(landmarkImage, src, landmarkRect, Paint());
         break;
       case 4:
         //square code
-        path = Path()
+        /*path = Path()
           ..addRect(Rect.fromCenter(center: center, width: 2 * radius, height: 2 * radius));
         canvas.drawPath(path, paint);
-        _drawChargingStationImage(canvas, imagePosition);
+        _drawChargingStationImage(canvas, imagePosition);*/
+
+        //360 spin
+        path = Path()
+          ..moveTo(center.dx, center.dy - radius) // Starting at the top center
+          ..lineTo(center.dx, center.dy + radius) // Drawing down to the right
+        // Drawing to the left
+          ..close(); // Closing the path back to the start
+
+        // Draw the path
+        canvas.drawPath(path, paint);
+        _drawChargingStationImage(canvas, imagePositionForShapeSeven);
+
+        var topCenter = Offset(center.dx, center.dy - radius); // Top of the line
+        // Save the current state of the canvas before applying transformations
+        canvas.save();
+        canvas.translate(topCenter.dx, topCenter.dy);
+        double rotationAngle = progress * 2 * math.pi; // This will complete a full rotation as progress goes from 0.0 to 1.0
+        canvas.rotate(rotationAngle);
+        canvas.translate(-topCenter.dx, -topCenter.dy);
+        final Rect src = Rect.fromLTWH(0, 0, landmarkImage.width.toDouble(), landmarkImage.height.toDouble());
+        final Rect dst = sizeIndex == 0 ? Rect.fromCenter(center: topCenter, width: 50.0, height: 50.0) : Rect.fromCenter(center: topCenter, width: 80.0, height: 80.0); // Adjust size as needed
+        canvas.drawImageRect(landmarkImage, src, dst, Paint());
+        canvas.restore();
+
         break;
       case 5:
         //diamond code
@@ -925,7 +1054,7 @@ class RouteDesignPainter extends CustomPainter {
 
 
     // Drawing the landmark along the path except shape 5
-    if (path != null && selectedRoute != 5) {
+    if (path != null && selectedRoute != 5 && selectedRoute != 3) {
       ui.PathMetric pathMetric = path.computeMetrics().first;
       ui.Tangent? tangent = pathMetric.getTangentForOffset(pathMetric.length * progress);
 
@@ -1197,13 +1326,16 @@ class EditSingleMissionPage extends StatefulWidget {
 }
 
 
-class _EditSingleMissionPageState extends State<EditSingleMissionPage> {
+class _EditSingleMissionPageState extends State<EditSingleMissionPage> with SingleTickerProviderStateMixin{
   late List<String> _days;
   late TimeOfDay _time;
   late List<String> _routeName;
   late bool _runAllRoutes;
   late bool _isActive;
   final List<String> _allDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  late final Future<ui.Image> landmarkImageFuture;
+  late final Future<ui.Image> chargingStationImageFuture;
+  late AnimationController _animationController;
 
   @override
   void initState() {
@@ -1213,6 +1345,12 @@ class _EditSingleMissionPageState extends State<EditSingleMissionPage> {
     _routeName = widget.singleFlightMissions.routeName;
     _runAllRoutes = widget.singleFlightMissions.runAllRoutes;
     _isActive = widget.singleFlightMissions.isActive;
+    landmarkImageFuture = loadImage('assets/images/drone1.png');
+    chargingStationImageFuture = loadImage('assets/images/chargingStation.png');
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 5), // Adjust duration to control the speed
+    )..repeat();
   }
   // Function to show a dialog to select the time
   void _selectTime() async {
@@ -1300,6 +1438,24 @@ class _EditSingleMissionPageState extends State<EditSingleMissionPage> {
     }
   }
 
+  int _getRouteShapeInt(String routeNumber) {
+    switch (routeNumber) {
+      case 'Circle':
+        return 1;
+      case 'Pie slice':
+        return 2;
+      case 'Triangle':
+        return 3;
+      case 'Square':
+        return 4;
+      case 'Cross':
+        return 5;
+      case 'Straight':
+        return 6;
+      default:
+        return 1;
+    }
+  }
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1343,6 +1499,7 @@ class _EditSingleMissionPageState extends State<EditSingleMissionPage> {
               child: Text('My Routes', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             ),
             ..._buildRouteList(),
+            
             Padding(
               padding: EdgeInsets.symmetric(horizontal: 16.0),
               child: ElevatedButton(
@@ -1361,23 +1518,91 @@ class _EditSingleMissionPageState extends State<EditSingleMissionPage> {
   }
 
   List<Widget> _buildRouteList() {
-    // Assuming globalRouteList is available with the list of routes
     return globalRouteList.map((route) {
       bool isSelected = _routeName.contains(route['name']);
-      return CheckboxListTile(
-        title: Text(route['name']),
-        value: isSelected,
-        onChanged: _runAllRoutes ? null : (bool? value) {
-          setState(() {
-            if (value == true) {
-              _routeName.add(route['name']);
-            } else {
-              _routeName.remove(route['name']);
-            }
-          });
-        },
+      // Assuming `route` contains `shape`, `diameter`, and `altitude` keys with their respective values
+
+      return Column(
+        children: [
+          ListTile(
+            title: Text(route['name']),
+            subtitle: FutureBuilder<List<ui.Image>>(
+              future: Future.wait([landmarkImageFuture, chargingStationImageFuture]),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const CircularProgressIndicator();
+                }
+                if (snapshot.hasError) {
+                  return Text("Error loading images: ${snapshot.error}");
+                }
+                if (snapshot.hasData) {
+                  return Row(
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: AspectRatio(
+                          aspectRatio: 1,
+                          child: Container(
+                            margin: EdgeInsets.all(16.0),
+                            decoration: BoxDecoration(
+                              color: Colors.lightBlueAccent.withOpacity(0.3),
+                              borderRadius: BorderRadius.circular(16.0),
+                            ),
+                            child: CustomPaint(
+                              painter: RouteDesignPainter(
+                                selectedRoute: _getRouteShapeInt(route['shape']),
+                                diameter: route['diameter'],
+                                altitude: route['altitude'],
+                                landmarkImage: snapshot.data![0],
+                                chargingStationImage: snapshot.data![1],
+                                progress: _animationController.value,
+                                sizeIndex: 0,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        flex: 2,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text('Flying Altitude: ${route['altitude'].toString()}m'),
+                            Text('Hovering Minute: ${route['diameter']}'),
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
+                } else {
+                  return const Text("Unknown error");
+                }
+              },
+            ),
+            trailing: Checkbox(
+              value: isSelected,
+              onChanged: _runAllRoutes ? null : (bool? value) {
+                setState(() {
+                  if (value == true) {
+                    _routeName.add(route['name']);
+                  } else {
+                    _routeName.remove(route['name']);
+                  }
+                });
+              },
+            ),
+          ),
+        ],
       );
     }).toList();
+  }
+
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
   }
 }
 class EditRoutineMissionPage extends StatefulWidget {
@@ -1624,6 +1849,58 @@ class _EditRoutineMissionPageState extends State<EditRoutineMissionPage> {
               child: Text('My Routes', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             ),
             ..._buildRouteList(),
+            /*Expanded(
+              // Adjust the flex if necessary to control the space distribution
+              flex: 1,
+              child: ListView(
+                children: _buildRouteList(),
+              ),
+            ),
+            Expanded(
+              flex: 3, // Adjust based on how much space you want the drawing area to take
+              child: AspectRatio(
+                aspectRatio: 1,
+                child: Container(
+                  margin: EdgeInsets.all(8.0),
+                  decoration: BoxDecoration(
+                    color: Colors.lightBlueAccent.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(16.0),
+                  ),
+                  child: FutureBuilder<List<ui.Image>>(
+                    future: Future.wait([landmarkImageFuture, chargingStationImageFuture]), // Define your futures
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const CircularProgressIndicator(); // Loading indicator
+                      }
+                      if (snapshot.hasError) {
+                        return Text("Error loading images: ${snapshot.error}");
+                      }
+                      if (snapshot.hasData) {
+                        // Images are loaded, pass them to the CustomPainter
+                        return AnimatedBuilder(
+                          animation: _animationController, // Define your AnimationController
+                          builder: (context, child) {
+                            return CustomPaint(
+                              painter: RouteDesignPainter(
+                                selectedRoute: selectedRoute, // Define how to determine the selected route
+                                diameter: diameter,
+                                altitude: altitude,
+                                landmarkImage: snapshot.data![0],
+                                chargingStationImage: snapshot.data![1],
+                                progress: _animationController.value,
+                                sizeIndex: 0, // Adjust as needed
+                              ),
+                            );
+                          },
+                        );
+                      } else {
+                        return const Text("Unknown error");
+                      }
+                    },
+                  ),
+                ),
+              ),
+            ),*/
             Padding(
               padding: EdgeInsets.symmetric(horizontal: 16.0),
               child: ElevatedButton(
@@ -1755,10 +2032,12 @@ class _SavedRoutesPageState extends State<SavedRoutesPage> with SingleTickerProv
     chargingStationImageFuture = loadImage('assets/images/chargingStation.png');
     _animationController = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 5), // Adjust duration to control the speed
-    )..repeat();
+      duration: const Duration(seconds: 10), // Adjust duration to control the speed
+    )..forward();
 
   }
+
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1892,7 +2171,7 @@ class _SavedRoutesPageState extends State<SavedRoutesPage> with SingleTickerProv
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Text('Flying Altitude: ${route['altitude'].toString()}m'),
-                            Text('Diameter: ${route['diameter'].toString()}m'),
+                            Text('Hovering Minute: ${route['diameter']}'),
                           ],
                         ),
                       ),
@@ -1938,6 +2217,29 @@ class _FlyingPageState extends State<FlyingPage> with SingleTickerProviderStateM
   late final Future<ui.Image> landmarkImageFuture;
   late final Future<ui.Image> chargingStationImageFuture;
   late AnimationController _animationController;
+  late VideoPlayerController _controller1;
+  late VideoPlayerController _controller2;
+  @override
+  void initState() {
+    super.initState();
+    _controller1 = VideoPlayerController.asset("assets/videos/360Front.mp4")
+      ..initialize().then((_) {
+        setState(() {}); // Ensure the first frame is shown after initializing the video
+        // Autoplay if needed
+      });
+    _controller2 = VideoPlayerController.asset("assets/videos/360Bottom.mp4")
+      ..initialize().then((_) {
+        setState(() {}); // Ensure the first frame is shown after initializing the video
+        // Autoplay if needed
+
+      });
+    landmarkImageFuture = loadImage('assets/images/drone1.png');
+    chargingStationImageFuture = loadImage('assets/images/chargingStation.png');
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 10), // Adjust duration to control the speed
+    )..forward();
+  }
   void _onStartPressed() {
     showDialog(
       context: context,
@@ -1957,6 +2259,8 @@ class _FlyingPageState extends State<FlyingPage> with SingleTickerProviderStateM
               setState(() {
                 isFlightStarted = true; // Update the state to reflect that the flight has started
               });
+              _controller1.play();
+              _controller2.play();
               Navigator.of(context).pop(); // Dismiss the dialog
             },
           ),
@@ -2008,7 +2312,7 @@ class _FlyingPageState extends State<FlyingPage> with SingleTickerProviderStateM
         return 1;
     }
   }*/
-  @override
+  /*@override
   void initState() {
     super.initState();
     landmarkImageFuture = loadImage('assets/images/drone1.png');
@@ -2017,7 +2321,7 @@ class _FlyingPageState extends State<FlyingPage> with SingleTickerProviderStateM
       vsync: this,
       duration: const Duration(seconds: 5), // Adjust duration to control the speed
     )..repeat();
-  }
+  }*/
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -2027,29 +2331,37 @@ class _FlyingPageState extends State<FlyingPage> with SingleTickerProviderStateM
       body: Column(
         children: [
           Expanded(
-            flex: 5,
+            flex: 6,
             child: Column(
               children: [
                 // Placeholder for video 1
                 Expanded(
-                  child: Container(
-                    height: 200, // Specify your desired height
-                    decoration: BoxDecoration(
-                      color: Colors.grey,
-                      border: Border.all(color: Colors.grey),
-                      borderRadius: BorderRadius.circular(8.0),
+                  child: Padding(
+                    padding: const EdgeInsets.all(4.0),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(10.0), // Set your desired radius here
+                      child: _controller1.value.isInitialized
+                          ? AspectRatio(
+                        aspectRatio: _controller1.value.aspectRatio,
+                        child: VideoPlayer(_controller1),
+                      )
+                          : const CircularProgressIndicator(),
                     ),
                   ),
                 ),
                 // Placeholder for video 2
                 SizedBox(height: 8),
                 Expanded(
-                  child: Container(
-                    height: 200, // Specify your desired height
-                    decoration: BoxDecoration(
-                      color: Colors.grey,
-                      border: Border.all(color: Colors.grey),
-                      borderRadius: BorderRadius.circular(8.0),
+                  child: Padding(
+                    padding: const EdgeInsets.all(4.0),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(10.0), // Set your desired radius here
+                      child: _controller2.value.isInitialized
+                          ? AspectRatio(
+                        aspectRatio: _controller2.value.aspectRatio,
+                        child: VideoPlayer(_controller2),
+                      )
+                          : const CircularProgressIndicator(),
                     ),
                   ),
                 ),
@@ -2058,7 +2370,7 @@ class _FlyingPageState extends State<FlyingPage> with SingleTickerProviderStateM
           ),
           // Battery level
           Padding(
-            padding: const EdgeInsets.all(8.0),
+            padding: const EdgeInsets.all(4.0),
             child: Row(
               children: [
                 Expanded(
@@ -2075,7 +2387,7 @@ class _FlyingPageState extends State<FlyingPage> with SingleTickerProviderStateM
           ),
           // CustomPaint area
           Expanded(
-            flex: 4,
+            flex: 3,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.start,
               crossAxisAlignment: CrossAxisAlignment.center,
@@ -2138,7 +2450,7 @@ class _FlyingPageState extends State<FlyingPage> with SingleTickerProviderStateM
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text('Flying Altitude: ${widget.altitude.toString()}m'),
-                      Text('Diameter: ${widget.diameter.toString()}m'),
+                      Text('Hovering Minute: ${widget.diameter}'),
                     ],
                   ),
                 ),
@@ -2173,6 +2485,8 @@ class _FlyingPageState extends State<FlyingPage> with SingleTickerProviderStateM
   @override
   void dispose() {
     _animationController.dispose();
+    _controller1.dispose();
+    _controller2.dispose();
     super.dispose();
   }
 }
@@ -2467,6 +2781,7 @@ class AnomalyItem extends StatefulWidget {
 
 class _AnomalyItemState extends State<AnomalyItem> {
   late VideoPlayerController _controller;
+  bool _isFullScreen = false;
 
   @override
   void initState() {
@@ -2477,6 +2792,47 @@ class _AnomalyItemState extends State<AnomalyItem> {
         // Autoplay if needed
         _controller.play();
       });
+  }
+  void _toggleFullScreen() {
+    setState(() {
+      _isFullScreen = !_isFullScreen;
+    });
+    if (_isFullScreen) {
+      // Enter full screen: Change orientation to landscape
+      SystemChrome.setPreferredOrientations([
+        DeviceOrientation.landscapeRight,
+        DeviceOrientation.landscapeLeft,
+      ]);
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersive);
+
+      // Navigate to a new route for full screen
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => Scaffold(
+            body: Center(
+              child: AspectRatio(
+                aspectRatio: _controller.value.aspectRatio,
+                child: VideoPlayer(_controller),
+              ),
+            ),
+            floatingActionButton: FloatingActionButton(
+              onPressed: _toggleFullScreen,
+              child: Icon(Icons.fullscreen_exit),
+            ),
+          ),
+        ),
+      );
+    } else {
+      // Exit full screen: Restore previous orientations
+      SystemChrome.setPreferredOrientations([
+        DeviceOrientation.portraitUp,
+        DeviceOrientation.portraitDown,
+      ]);
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+
+      // Use Navigator.pop if you pushed the full-screen page onto the Navigator stack
+      Navigator.of(context).pop();
+    }
   }
 
   @override
@@ -2492,17 +2848,27 @@ class _AnomalyItemState extends State<AnomalyItem> {
             subtitle: Text('${widget.anomaly.time} - ${widget.anomaly.anomalyType}'),
             isThreeLine: true,
           ),
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(20.0), // Set your desired radius here
-            child: _controller.value.isInitialized
-                ? AspectRatio(
-              aspectRatio: _controller.value.aspectRatio,
-              child: VideoPlayer(_controller),
-            )
-                : const CircularProgressIndicator(),
-          ),
+          Stack(
+            alignment: Alignment.bottomRight,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(20.0),
+                child: _controller.value.isInitialized
+                    ? AspectRatio(
+                  aspectRatio: _controller.value.aspectRatio,
+                  child: VideoPlayer(_controller),
+                )
+                    : const CircularProgressIndicator(),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: IconButton(
+                  icon: Icon(_isFullScreen ? Icons.fullscreen_exit : Icons.fullscreen),
+                  color: Colors.white,
+                  onPressed: _toggleFullScreen,
+                ),
+              ),
+            ],
           ),
           ButtonBar(
             alignment: MainAxisAlignment.spaceAround,
@@ -2531,5 +2897,78 @@ class _AnomalyItemState extends State<AnomalyItem> {
   void dispose() {
     _controller.dispose();
     super.dispose();
+  }
+}
+
+class RegistrationPage extends StatefulWidget {
+  @override
+  _RegistrationPageState createState() => _RegistrationPageState();
+}
+
+class _RegistrationPageState extends State<RegistrationPage> {
+
+  @override
+  void initState() {
+    super.initState();
+    _showEntryNotification();
+  }
+
+  Future<void> _showEntryNotification() async {
+    var androidDetails = const AndroidNotificationDetails(
+      'channel_id',
+      'channel_name',
+      channelDescription: 'channel_description',
+    );
+    var iOSDetails = const DarwinNotificationDetails();
+    var generalNotificationDetails = NotificationDetails(
+      android: androidDetails,
+      iOS: iOSDetails,
+    );
+
+    await flutterLocalNotificationsPlugin.show(
+      0,
+      'Welcome',
+      'Welcome to the Registration Page',
+      generalNotificationDetails,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Registration'),
+      ),
+      body: Padding(
+        padding: EdgeInsets.all(16.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            TextFormField(
+              decoration: InputDecoration(
+                labelText: 'Email',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            SizedBox(height: 16.0),
+            TextFormField(
+              decoration: InputDecoration(
+                labelText: 'Password',
+                border: OutlineInputBorder(),
+              ),
+              obscureText: true,
+            ),
+            SizedBox(height: 24.0),
+            ElevatedButton(
+              onPressed: () {
+                // Implement registration logic
+              },
+              child: Text('Register'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
