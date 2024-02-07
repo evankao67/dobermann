@@ -1499,7 +1499,7 @@ class _EditSingleMissionPageState extends State<EditSingleMissionPage> with Sing
               child: Text('My Routes', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             ),
             ..._buildRouteList(),
-            
+
             Padding(
               padding: EdgeInsets.symmetric(horizontal: 16.0),
               child: ElevatedButton(
@@ -1536,44 +1536,51 @@ class _EditSingleMissionPageState extends State<EditSingleMissionPage> with Sing
                   return Text("Error loading images: ${snapshot.error}");
                 }
                 if (snapshot.hasData) {
-                  return Row(
-                    children: [
-                      Expanded(
-                        flex: 3,
-                        child: AspectRatio(
-                          aspectRatio: 1,
-                          child: Container(
-                            margin: EdgeInsets.all(16.0),
-                            decoration: BoxDecoration(
-                              color: Colors.lightBlueAccent.withOpacity(0.3),
-                              borderRadius: BorderRadius.circular(16.0),
-                            ),
-                            child: CustomPaint(
-                              painter: RouteDesignPainter(
-                                selectedRoute: _getRouteShapeInt(route['shape']),
-                                diameter: route['diameter'],
-                                altitude: route['altitude'],
-                                landmarkImage: snapshot.data![0],
-                                chargingStationImage: snapshot.data![1],
-                                progress: _animationController.value,
-                                sizeIndex: 0,
+                  // Wrap the section that depends on the animation with AnimatedBuilder
+                  return AnimatedBuilder(
+                    animation: _animationController,
+                    builder: (context, child) {
+                      return Row(
+                        children: [
+                          Expanded(
+                            flex: 7,
+                            child: AspectRatio(
+                              aspectRatio: 1,
+                              child: Container(
+                                margin: EdgeInsets.all(16.0),
+                                decoration: BoxDecoration(
+                                  color: Colors.lightBlueAccent.withOpacity(0.3),
+                                  borderRadius: BorderRadius.circular(16.0),
+                                ),
+                                child: CustomPaint(
+                                  painter: RouteDesignPainter(
+                                    selectedRoute: _getRouteShapeInt(route['shape']),
+                                    diameter: route['diameter'],
+                                    altitude: route['altitude'],
+                                    landmarkImage: snapshot.data![0],
+                                    chargingStationImage: snapshot.data![1],
+                                    progress: _animationController.value,
+                                    sizeIndex: 0,
+                                  ),
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      ),
-                      Expanded(
-                        flex: 2,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text('Flying Altitude: ${route['altitude'].toString()}m'),
-                            Text('Hovering Minute: ${route['diameter']}'),
-                          ],
-                        ),
-                      ),
-                    ],
+                          Expanded(
+                            flex: 4,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text('Flying Altitude: ${route['altitude'].toString()}m'),
+                                Text('Diameter: ${route['diameter'].toString()}m'),
+                              ],
+                            ),
+                            // Remaining code for displaying route details
+                          ),
+                        ],
+                      );
+                    },
                   );
                 } else {
                   return const Text("Unknown error");
@@ -1597,6 +1604,7 @@ class _EditSingleMissionPageState extends State<EditSingleMissionPage> with Sing
       );
     }).toList();
   }
+
 
 
   @override
@@ -2782,6 +2790,7 @@ class AnomalyItem extends StatefulWidget {
 class _AnomalyItemState extends State<AnomalyItem> {
   late VideoPlayerController _controller;
   bool _isFullScreen = false;
+  ValueNotifier<double> _sliderValue = ValueNotifier(0.0);
 
   @override
   void initState() {
@@ -2789,50 +2798,27 @@ class _AnomalyItemState extends State<AnomalyItem> {
     _controller = VideoPlayerController.asset(widget.anomaly.videoUrl)
       ..initialize().then((_) {
         setState(() {}); // Ensure the first frame is shown after initializing the video
-        // Autoplay if needed
         _controller.play();
+        _controller.addListener(() {
+          _sliderValue.value = _controller.value.position.inMilliseconds.toDouble() /
+              (_controller.value.duration.inMilliseconds.toDouble());
+        });
       });
   }
-  void _toggleFullScreen() {
+
+  void _togglePlayPause() {
     setState(() {
-      _isFullScreen = !_isFullScreen;
+      if (_controller.value.isPlaying) {
+        _controller.pause();
+      } else {
+        _controller.play();
+      }
     });
-    if (_isFullScreen) {
-      // Enter full screen: Change orientation to landscape
-      SystemChrome.setPreferredOrientations([
-        DeviceOrientation.landscapeRight,
-        DeviceOrientation.landscapeLeft,
-      ]);
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersive);
+  }
 
-      // Navigate to a new route for full screen
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (context) => Scaffold(
-            body: Center(
-              child: AspectRatio(
-                aspectRatio: _controller.value.aspectRatio,
-                child: VideoPlayer(_controller),
-              ),
-            ),
-            floatingActionButton: FloatingActionButton(
-              onPressed: _toggleFullScreen,
-              child: Icon(Icons.fullscreen_exit),
-            ),
-          ),
-        ),
-      );
-    } else {
-      // Exit full screen: Restore previous orientations
-      SystemChrome.setPreferredOrientations([
-        DeviceOrientation.portraitUp,
-        DeviceOrientation.portraitDown,
-      ]);
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-
-      // Use Navigator.pop if you pushed the full-screen page onto the Navigator stack
-      Navigator.of(context).pop();
-    }
+  void _seekVideo(double value) {
+    final position = _controller.value.duration * value;
+    _controller.seekTo(position);
   }
 
   @override
@@ -2844,15 +2830,15 @@ class _AnomalyItemState extends State<AnomalyItem> {
             leading: const CircleAvatar(
               backgroundImage: AssetImage('assets/images/drone1.png'),
             ),
-            title: Text(widget.anomaly.droneName), // Drone name
-            subtitle: Text('${widget.anomaly.time} - ${widget.anomaly.anomalyType}'),
+            title: Text("Drone Name"), // Assuming anomaly has a droneName field
+            subtitle: Text("Time - Anomaly Type"), // Assuming time and anomalyType fields
             isThreeLine: true,
           ),
           Stack(
-            alignment: Alignment.bottomRight,
+            alignment: Alignment.bottomCenter,
             children: [
               ClipRRect(
-                borderRadius: BorderRadius.circular(20.0),
+                borderRadius: BorderRadius.circular(20.0), // Set your desired radius here
                 child: _controller.value.isInitialized
                     ? AspectRatio(
                   aspectRatio: _controller.value.aspectRatio,
@@ -2860,14 +2846,7 @@ class _AnomalyItemState extends State<AnomalyItem> {
                 )
                     : const CircularProgressIndicator(),
               ),
-              Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: IconButton(
-                  icon: Icon(_isFullScreen ? Icons.fullscreen_exit : Icons.fullscreen),
-                  color: Colors.white,
-                  onPressed: _toggleFullScreen,
-                ),
-              ),
+              _videoControls(),
             ],
           ),
           ButtonBar(
@@ -2887,10 +2866,82 @@ class _AnomalyItemState extends State<AnomalyItem> {
               ),
             ],
           ),
-          // ... other widgets like buttons
         ],
       ),
     );
+  }
+
+  Widget _videoControls() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ValueListenableBuilder<double>(
+          valueListenable: _sliderValue,
+          builder: (context, value, child) {
+            return Slider(
+              value: value,
+              onChanged: (newValue) {
+                _seekVideo(newValue);
+              },
+            );
+          },
+        ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            IconButton(
+              icon: Icon(_controller.value.isPlaying ? Icons.pause : Icons.play_arrow),
+              onPressed: _togglePlayPause,
+            ),
+            IconButton(
+              icon: Icon(Icons.stop),
+              onPressed: () {
+                _controller.pause();
+                _controller.seekTo(Duration.zero);
+              },
+            ),
+            IconButton(
+              icon: Icon(_isFullScreen ? Icons.fullscreen_exit : Icons.fullscreen),
+              onPressed: _toggleFullScreen,
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  void _toggleFullScreen() {
+    setState(() {
+      _isFullScreen = !_isFullScreen;
+    });
+    if (_isFullScreen) {
+      // Enter full screen: Change orientation to landscape
+      SystemChrome.setPreferredOrientations([
+        DeviceOrientation.landscapeRight,
+        DeviceOrientation.landscapeLeft,
+      ]);
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+
+      // Navigate to a new route for full screen
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => FullScreenVideoPlayer(
+            controller: _controller,
+            onToggleFullScreen: () {
+              Navigator.of(context).pop();
+              _toggleFullScreen(); // This will set _isFullScreen to false and restore UI modes
+            },
+          ),
+        ),
+      );
+    } else {
+      // Exit full screen: Restore previous orientations
+      SystemChrome.setPreferredOrientations([
+        DeviceOrientation.portraitUp,
+        DeviceOrientation.portraitDown,
+      ]);
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    }
   }
 
   @override
@@ -2899,7 +2950,72 @@ class _AnomalyItemState extends State<AnomalyItem> {
     super.dispose();
   }
 }
+class FullScreenVideoPlayer extends StatelessWidget {
+  final VideoPlayerController controller;
+  final VoidCallback onToggleFullScreen;
 
+  const FullScreenVideoPlayer({
+    Key? key,
+    required this.controller,
+    required this.onToggleFullScreen,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: AspectRatio(
+          aspectRatio: controller.value.aspectRatio,
+          child: Stack(
+            alignment: Alignment.bottomCenter,
+            children: [
+              VideoPlayer(controller),
+              _videoControls(context),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _videoControls(BuildContext context) {
+    return SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Slider(
+            value: controller.value.position.inSeconds.toDouble(),
+            max: controller.value.duration.inSeconds.toDouble(),
+            onChanged: (value) {
+              controller.seekTo(Duration(seconds: value.toInt()));
+            },
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              IconButton(
+                icon: Icon(
+                  controller.value.isPlaying ? Icons.pause : Icons.play_arrow,
+                ),
+                onPressed: () {
+                  if (controller.value.isPlaying) {
+                    controller.pause();
+                  } else {
+                    controller.play();
+                  }
+                },
+              ),
+              IconButton(
+                icon: Icon(Icons.fullscreen_exit),
+                onPressed: onToggleFullScreen,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
 class RegistrationPage extends StatefulWidget {
   @override
   _RegistrationPageState createState() => _RegistrationPageState();
