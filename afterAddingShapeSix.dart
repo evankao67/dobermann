@@ -713,7 +713,7 @@ class _RouteDesignPageState extends State<RouteDesignPage> with SingleTickerProv
               },
             ),
             const SizedBox(height: 16),
-            Text('Flying Altitude: ${_altitude.toStringAsFixed(1)} m'),
+            Text('Flying Altitude: ${_altitude.toStringAsFixed(1)} meters'),
             Slider(
               min: 0,
               max: 5,
@@ -833,7 +833,7 @@ class RouteDesignPainter extends CustomPainter {
 
   void _drawChargingStationImage(Canvas canvas, Offset position) {
     final srcRect = Rect.fromLTWH(0, 0, chargingStationImage.width.toDouble(), chargingStationImage.height.toDouble());
-    final dstRect = sizeIndex == 0? Rect.fromCenter(center: position, width: 50.0, height: 50.0) : Rect.fromCenter(center: position, width: 100.0, height: 100.0);  // Adjust size as needed
+    final dstRect = sizeIndex == 0? Rect.fromCenter(center: position, width: 50.0, height: 50.0) : Rect.fromCenter(center: position, width: 80.0, height: 80.0);  // Adjust size as needed
 
     canvas.drawImageRect(chargingStationImage, srcRect, dstRect, Paint());
   }
@@ -932,7 +932,7 @@ class RouteDesignPainter extends CustomPainter {
         Offset landmarkPosition;
         double y = center.dy + radius - radius * progress *2;
         landmarkPosition = Offset(center.dx, y);
-        final landmarkSize = sizeIndex == 0 ? const Size(50.0, 50.0) : const Size(80.0, 80.0); // Adjust size as needed
+        final landmarkSize = sizeIndex == 0 ? const Size(50.0, 50.0) : const Size(100.0, 100.0); // Adjust size as needed
         final Rect landmarkRect = Rect.fromCenter(
           center: landmarkPosition,
           width: landmarkSize.width,
@@ -967,7 +967,7 @@ class RouteDesignPainter extends CustomPainter {
         canvas.rotate(rotationAngle);
         canvas.translate(-topCenter.dx, -topCenter.dy);
         final Rect src = Rect.fromLTWH(0, 0, landmarkImage.width.toDouble(), landmarkImage.height.toDouble());
-        final Rect dst = sizeIndex == 0 ? Rect.fromCenter(center: topCenter, width: 50.0, height: 50.0) : Rect.fromCenter(center: topCenter, width: 80.0, height: 80.0); // Adjust size as needed
+        final Rect dst = sizeIndex == 0 ? Rect.fromCenter(center: topCenter, width: 50.0, height: 50.0) : Rect.fromCenter(center: topCenter, width: 100.0, height: 100.0); // Adjust size as needed
         canvas.drawImageRect(landmarkImage, src, dst, Paint());
         canvas.restore();
 
@@ -1346,7 +1346,7 @@ class _EditSingleMissionPageState extends State<EditSingleMissionPage> with Sing
     _runAllRoutes = widget.singleFlightMissions.runAllRoutes;
     _isActive = widget.singleFlightMissions.isActive;
     landmarkImageFuture = loadImage('assets/images/drone1.png');
-    chargingStationImageFuture = loadImage('assets/images/chargingStation.png');
+    chargingStationImageFuture = loadImage('assets/images/chargingStationFlat.png');
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 5), // Adjust duration to control the speed
@@ -2041,7 +2041,7 @@ class _SavedRoutesPageState extends State<SavedRoutesPage> with SingleTickerProv
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 10), // Adjust duration to control the speed
-    )..forward();
+    )..repeat();
 
   }
 
@@ -2179,7 +2179,7 @@ class _SavedRoutesPageState extends State<SavedRoutesPage> with SingleTickerProv
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Text('Flying Altitude: ${route['altitude'].toString()}m'),
-                            Text('Hovering Minute: ${route['diameter']}'),
+                            Text('Diameter: ${route['diameter'].toString()}m'),
                           ],
                         ),
                       ),
@@ -2230,12 +2230,12 @@ class _FlyingPageState extends State<FlyingPage> with SingleTickerProviderStateM
   @override
   void initState() {
     super.initState();
-    _controller1 = VideoPlayerController.asset("assets/videos/360Front.mp4")
+    _controller1 = VideoPlayerController.asset("assets/videos/circularFront.mp4")
       ..initialize().then((_) {
         setState(() {}); // Ensure the first frame is shown after initializing the video
         // Autoplay if needed
       });
-    _controller2 = VideoPlayerController.asset("assets/videos/360Bottom.mp4")
+    _controller2 = VideoPlayerController.asset("assets/videos/circularBottom.mp4")
       ..initialize().then((_) {
         setState(() {}); // Ensure the first frame is shown after initializing the video
         // Autoplay if needed
@@ -2246,7 +2246,7 @@ class _FlyingPageState extends State<FlyingPage> with SingleTickerProviderStateM
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 10), // Adjust duration to control the speed
-    )..forward();
+    )..repeat();
   }
   void _onStartPressed() {
     showDialog(
@@ -2458,7 +2458,7 @@ class _FlyingPageState extends State<FlyingPage> with SingleTickerProviderStateM
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text('Flying Altitude: ${widget.altitude.toString()}m'),
-                      Text('Hovering Minute: ${widget.diameter}'),
+                      Text('Diameter: ${widget.diameter.toString()}m'),
                     ],
                   ),
                 ),
@@ -2830,8 +2830,8 @@ class _AnomalyItemState extends State<AnomalyItem> {
             leading: const CircleAvatar(
               backgroundImage: AssetImage('assets/images/drone1.png'),
             ),
-            title: Text("Drone Name"), // Assuming anomaly has a droneName field
-            subtitle: Text("Time - Anomaly Type"), // Assuming time and anomalyType fields
+            title: Text(widget.anomaly.droneName), // Assuming anomaly has a droneName field
+            subtitle: Text(widget.anomaly.time + " - " + widget.anomaly.anomalyType), // Assuming time and anomalyType fields
             isThreeLine: true,
           ),
           Stack(
@@ -2915,27 +2915,30 @@ class _AnomalyItemState extends State<AnomalyItem> {
       _isFullScreen = !_isFullScreen;
     });
     if (_isFullScreen) {
-      // Enter full screen: Change orientation to landscape
       SystemChrome.setPreferredOrientations([
         DeviceOrientation.landscapeRight,
         DeviceOrientation.landscapeLeft,
       ]);
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
-      // Navigate to a new route for full screen
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (context) => FullScreenVideoPlayer(
             controller: _controller,
+            sliderValue: _controller.value.position.inSeconds.toDouble() / _controller.value.duration.inSeconds.toDouble(),
             onToggleFullScreen: () {
               Navigator.of(context).pop();
-              _toggleFullScreen(); // This will set _isFullScreen to false and restore UI modes
+              _toggleFullScreen();
+            },
+            onPlayPauseToggle: _togglePlayPause,
+            onStop: () {
+              _controller.pause();
+              _controller.seekTo(Duration.zero);
             },
           ),
         ),
       );
     } else {
-      // Exit full screen: Restore previous orientations
       SystemChrome.setPreferredOrientations([
         DeviceOrientation.portraitUp,
         DeviceOrientation.portraitDown,
@@ -2944,33 +2947,59 @@ class _AnomalyItemState extends State<AnomalyItem> {
     }
   }
 
+
   @override
   void dispose() {
     _controller.dispose();
     super.dispose();
   }
 }
-class FullScreenVideoPlayer extends StatelessWidget {
+class FullScreenVideoPlayer extends StatefulWidget {
   final VideoPlayerController controller;
+  final double sliderValue;
   final VoidCallback onToggleFullScreen;
+  final VoidCallback onPlayPauseToggle;
+  final VoidCallback onStop;
 
   const FullScreenVideoPlayer({
     Key? key,
     required this.controller,
+    required this.sliderValue,
     required this.onToggleFullScreen,
+    required this.onPlayPauseToggle,
+    required this.onStop,
   }) : super(key: key);
+
+  @override
+  _FullScreenVideoPlayerState createState() => _FullScreenVideoPlayerState();
+}
+
+class _FullScreenVideoPlayerState extends State<FullScreenVideoPlayer> {
+  late final ValueNotifier<double> _sliderValueNotifier;
+
+  @override
+  void initState() {
+    super.initState();
+    _sliderValueNotifier = ValueNotifier<double>(widget.sliderValue);
+    widget.controller.addListener(_updateSliderValue);
+  }
+
+  void _updateSliderValue() {
+    _sliderValueNotifier.value = widget.controller.value.position.inSeconds.toDouble() /
+        (widget.controller.value.duration.inSeconds.toDouble());
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Center(
         child: AspectRatio(
-          aspectRatio: controller.value.aspectRatio,
+          aspectRatio: widget.controller.value.aspectRatio,
           child: Stack(
             alignment: Alignment.bottomCenter,
             children: [
-              VideoPlayer(controller),
-              _videoControls(context),
+              VideoPlayer(widget.controller),
+              _videoControls(),
             ],
           ),
         ),
@@ -2978,42 +3007,50 @@ class FullScreenVideoPlayer extends StatelessWidget {
     );
   }
 
-  Widget _videoControls(BuildContext context) {
+  Widget _videoControls() {
     return SafeArea(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Slider(
-            value: controller.value.position.inSeconds.toDouble(),
-            max: controller.value.duration.inSeconds.toDouble(),
-            onChanged: (value) {
-              controller.seekTo(Duration(seconds: value.toInt()));
+          ValueListenableBuilder<double>(
+            valueListenable: _sliderValueNotifier,
+            builder: (context, value, child) {
+              return Slider(
+                value: value,
+                onChanged: (newValue) {
+                  final newPosition = newValue * widget.controller.value.duration.inMilliseconds;
+                  widget.controller.seekTo(Duration(milliseconds: newPosition.round()));
+                },
+              );
             },
           ),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               IconButton(
-                icon: Icon(
-                  controller.value.isPlaying ? Icons.pause : Icons.play_arrow,
-                ),
-                onPressed: () {
-                  if (controller.value.isPlaying) {
-                    controller.pause();
-                  } else {
-                    controller.play();
-                  }
-                },
+                icon: Icon(widget.controller.value.isPlaying ? Icons.pause : Icons.play_arrow),
+                onPressed: widget.onPlayPauseToggle,
+              ),
+              IconButton(
+                icon: Icon(Icons.stop),
+                onPressed: widget.onStop,
               ),
               IconButton(
                 icon: Icon(Icons.fullscreen_exit),
-                onPressed: onToggleFullScreen,
+                onPressed: widget.onToggleFullScreen,
               ),
             ],
           ),
         ],
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_updateSliderValue);
+    _sliderValueNotifier.dispose();
+    super.dispose();
   }
 }
 class RegistrationPage extends StatefulWidget {
